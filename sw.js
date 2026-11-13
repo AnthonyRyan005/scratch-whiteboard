@@ -3,7 +3,7 @@
    It never stores drawings or pasted pictures. Those live in memory only and vanish when the app closes. */
 'use strict';
 
-const CACHE = 'scratch-whiteboard-v2';
+const CACHE = 'scratch-whiteboard-v3';
 const FILES = ['index.html', 'manifest.json', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 const fileURL = (name) => new URL(name, self.registration.scope).href;
 
@@ -22,6 +22,26 @@ async function refresh(url) {
   const cache = await caches.open(CACHE);
   await cache.put(url, copy.clone());
   return copy;
+}
+
+function offlinePage() {
+  return new Response(
+    '<!DOCTYPE html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scratch Whiteboard</title>' +
+    '<p style="font:17px/1.5 -apple-system, sans-serif; padding: 32px 24px; color: #1c1c1e">' +
+    'Connect to the internet once so the whiteboard can save itself for offline use.</p>',
+    { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+}
+
+// The page itself: try the network first so a new version shows straight away,
+// but use the saved copy when offline or when the network takes more than 3 seconds.
+async function pageResponse(key, fresh) {
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
+  const res = await Promise.race([fresh, timeout]);
+  if (res) return res;
+  const saved = await caches.match(key, { cacheName: CACHE });
+  if (saved) return saved;
+  return (await fresh) || offlinePage();
 }
 
 self.addEventListener('install', (event) => {
@@ -56,29 +76,21 @@ self.addEventListener('fetch', (event) => {
   const scope = new URL(self.registration.scope);
   if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   const rel = url.pathname.slice(scope.pathname.length);
-  let key;
   if (req.mode === 'navigate') {
     if (rel !== '' && rel !== 'index.html') return;
-    key = fileURL('index.html');
-  } else if (FILES.includes(rel)) {
-    key = fileURL(rel);
-  } else {
-    return;   // anything else goes to the network as usual and is never stored
+    const key = fileURL('index.html');
+    const fresh = refresh(key).catch(() => null);
+    event.waitUntil(fresh);
+    event.respondWith(pageResponse(key, fresh));
+    return;
   }
-  // Answer from the saved copy straight away, and update it in the background when online.
+  if (!FILES.includes(rel)) return;   // anything else goes to the network as usual and is never stored
+  // Icons and the manifest: answer from the saved copy, and update it in the background when online.
+  const key = fileURL(rel);
   const fresh = refresh(key).catch(() => null);
   event.waitUntil(fresh);
   event.respondWith((async () => {
     const saved = await caches.match(key, { cacheName: CACHE });
-    if (saved) return saved;
-    const res = await fresh;
-    if (res) return res;
-    if (req.mode !== 'navigate') return Response.error();
-    return new Response(
-      '<!DOCTYPE html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scratch Whiteboard</title>' +
-      '<p style="font:17px/1.5 -apple-system, sans-serif; padding: 32px 24px; color: #1c1c1e">' +
-      'Connect to the internet once so the whiteboard can save itself for offline use.</p>',
-      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-    );
+    return saved || (await fresh) || Response.error();
   })());
 });

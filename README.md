@@ -1,6 +1,6 @@
 # Scratch Whiteboard
 
-A borderless whiteboard for iPhone and iPad. Draw, paste pictures and text, then move, resize and crop them. Nothing is saved. Once installed, it works offline.
+A borderless whiteboard for iPhone and iPad. Draw, paste pictures and text or add photos from your library, then move, resize, rotate and crop them. Nothing is saved. Once installed, it works offline.
 
 ## Open it
 
@@ -26,4 +26,4 @@ The offline copy holds only these files. Drawings and pasted pictures stay in me
 
 ## Updating
 
-Change the files on the `main` branch. GitHub Pages republishes within a minute or two, and each device picks up the new version the next time it opens the app while online.
+Upload the new files to the `main` branch. GitHub replaces files that have the same name. GitHub Pages republishes within a minute or two, and each device gets the new version the next time it opens the app while online.

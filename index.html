@@ -134,7 +134,6 @@ svg { display: block; }
 .sheet-btn { flex: 1; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(30, 30, 50, .06); font-weight: 600; cursor: pointer; }
 .sheet-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sheet-btn:active { background: rgba(30, 30, 50, .12); }
-#fileInput:focus-visible + .sheet-btn { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .menu { top: calc(var(--sat) + 64px); right: calc(var(--sar) + 12px); min-width: 210px; padding: 6px; border-radius: 16px; display: grid; }
 .menu button { height: 44px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
@@ -150,6 +149,12 @@ svg { display: block; }
 .ctx .danger { color: var(--danger); }
 .ctx .strong { color: #64b5ff; font-weight: 700; }
 .ctx[data-mode="crop"] .ctx-edit, .ctx:not([data-mode="crop"]) .ctx-crop, .ctx[data-mode="text"] .img-only { display: none; }
+.ctx .short { display: none; }
+@media (max-width: 419px) {
+  .ctx button { padding: 0 12px; }
+  .ctx .long { display: none; }
+  .ctx .short { display: inline; }
+}
 
 #toast {
   position: fixed; z-index: 40; left: 50%; bottom: calc(var(--sab) + 80px);
@@ -190,7 +195,7 @@ svg { display: block; }
   <ul>
     <li><svg viewBox="0 0 24 24"><path d="M15.2 4.8l4 4L9 19l-5 1 1-5z"/><path d="M13.4 6.6l4 4"/></svg>Draw with a finger or Apple Pencil</li>
     <li><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-6.5 6.5"/><path d="M4 20l6.5-6.5"/></svg>Pinch to zoom, two fingers to move</li>
-    <li><svg viewBox="0 0 24 24"><path d="M9 4.5H7.5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2H15"/><rect x="9" y="3" width="6" height="3.2" rx="1"/></svg>Paste adds pictures and text</li>
+    <li><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-4.5-4.5L7 19"/></svg>Paste or add photos</li>
     <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="8.6" cy="10.2" r="1.1"/><circle cx="12" cy="7.6" r="1.1"/><circle cx="15.4" cy="10.2" r="1.1"/></svg>Tap the pen again for colours</li>
     <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>Nothing is saved</li>
   </ul>
@@ -226,6 +231,9 @@ svg { display: block; }
   <button id="pasteBtn" class="ibtn" type="button" aria-label="Paste" title="Paste" aria-haspopup="dialog" aria-expanded="false" aria-controls="pasteSheet">
     <svg viewBox="0 0 24 24"><path d="M9 4.5H7.5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2H15"/><rect x="9" y="3" width="6" height="3.2" rx="1"/></svg>
   </button>
+  <button id="photoBtn" class="ibtn" type="button" aria-label="Add photos" title="Add photos from your library">
+    <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-4.5-4.5L7 19"/></svg>
+  </button>
   <span class="sep" aria-hidden="true"></span>
   <button id="undoBtn" class="ibtn" type="button" aria-label="Undo" title="Undo" disabled>
     <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
@@ -250,8 +258,7 @@ svg { display: block; }
     <div class="zone-text" aria-hidden="true"><strong id="zoneMain">Touch and hold here</strong><span id="zoneSub">then tap Paste</span></div>
   </div>
   <div class="sheet-row">
-    <input id="fileInput" class="vh" type="file" accept="image/*" multiple>
-    <label class="sheet-btn" for="fileInput"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-4.5-4.5L7 19"/></svg>Choose a photo</label>
+    <button id="choosePhoto" class="sheet-btn" type="button"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-4.5-4.5L7 19"/></svg>Choose a photo</button>
     <button id="pasteClose" class="sheet-btn" type="button">Cancel</button>
   </div>
 </div>
@@ -259,8 +266,9 @@ svg { display: block; }
 <div id="ctx" class="ctx" role="toolbar" aria-label="Selected item" hidden>
   <div class="ctx-group ctx-edit">
     <button type="button" class="img-only" data-act="crop">Crop</button>
-    <button type="button" data-act="front">To front</button>
-    <button type="button" data-act="back">To back</button>
+    <button type="button" data-act="rotate" title="Rotate a quarter turn clockwise">Rotate</button>
+    <button type="button" data-act="front" title="Bring to front"><span class="long">To front</span><span class="short">Front</span></button>
+    <button type="button" data-act="back" title="Send to back"><span class="long">To back</span><span class="short">Back</span></button>
     <button type="button" class="danger" data-act="delete">Delete</button>
   </div>
   <div class="ctx-group ctx-crop">
@@ -270,6 +278,7 @@ svg { display: block; }
   </div>
 </div>
 
+<input id="fileInput" class="vh" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
 <div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAction" type="button" hidden></button></div>
 <div id="safeProbe" aria-hidden="true"></div>
 
@@ -283,6 +292,8 @@ svg { display: block; }
   const MAX_IMAGE_SIDE = 2560;   // larger pictures are scaled down to keep memory use low
   const ERASER_RADIUS = 14;      // screen px
   const HANDLE_RADIUS = 8;       // screen px
+  const ROTATE_GAP = 30;         // screen px between a picture's top edge and its rotate knob
+  const ROTATE_R = 11;           // screen px
   const HISTORY_LIMIT = 200;
   const ACCENT = '#007aff';
   const COLOURS = [
@@ -309,7 +320,7 @@ svg { display: block; }
   const penBtn = document.querySelector('.tool[data-tool="pen"]');
   const undoBtn = $('undoBtn'), redoBtn = $('redoBtn'), pasteBtn = $('pasteBtn');
   const penPop = $('penPop'), pasteSheet = $('pasteSheet'), pasteZone = $('pasteZone');
-  const zoneMain = $('zoneMain'), zoneSub = $('zoneSub'), fileInput = $('fileInput');
+  const zoneMain = $('zoneMain'), zoneSub = $('zoneSub'), fileInput = $('fileInput'), photoBtn = $('photoBtn');
   const zoomLabel = $('zoomLabel'), zoomMenu = $('zoomMenu'), zoomFit = $('zoomFit');
   const fingerRow = $('fingerRow'), fingerToggle = $('fingerToggle');
   const safeProbe = $('safeProbe');
@@ -336,7 +347,41 @@ svg { display: block; }
   const selected = () => (selectedId ? byId(selectedId) : null);
   const replaceItem = (list, next) => list.map((it) => (it.id === next.id ? next : it));
   const inRect = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-  const corners = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]];
+  const toScreenPt = (p) => ({ x: p.x * view.s + view.x, y: p.y * view.s + view.y });
+
+  /* Pictures and text can be turned. An item keeps its unturned box (rectOf) plus an angle (rot)
+     about the box's centre, so moving, resizing and cropping work the same at any angle. */
+  const rotOf = (it) => it.rot || 0;
+  function centreOf(it) { const r = rectOf(it); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }
+  function rotPt(p, c, a) {
+    if (!a) return { x: p.x, y: p.y };
+    const cs = Math.cos(a), sn = Math.sin(a), dx = p.x - c.x, dy = p.y - c.y;
+    return { x: c.x + dx * cs - dy * sn, y: c.y + dx * sn + dy * cs };
+  }
+  // Corners of rectangle r turned by angle a about point c, in the order nw, ne, se, sw.
+  function turnedCorners(r, c, a) {
+    return [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }]
+      .map((p) => rotPt(p, c, a));
+  }
+  const cornersOf = (it) => turnedCorners(rectOf(it), centreOf(it), rotOf(it));
+  function boundsOfPts(pts) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  }
+  const boundsOf = (it) => (it.type === 'stroke' || !rotOf(it) ? rectOf(it) : boundsOfPts(cornersOf(it)));
+  const insideItem = (it, w) => inRect(rectOf(it), rotPt(w, centreOf(it), -rotOf(it)));
+  function normAngle(a) {
+    a %= Math.PI * 2;
+    if (a > Math.PI) a -= Math.PI * 2;
+    if (a <= -Math.PI) a += Math.PI * 2;
+    return Math.abs(a) < 1e-9 ? 0 : a;
+  }
+  // The rotate knob sits a little above the middle of the top edge and turns with the item.
+  function rotateHandleOf(it) {
+    const r = rectOf(it), c = centreOf(it);
+    return toScreenPt(rotPt({ x: c.x, y: r.y - ROTATE_GAP / view.s }, c, rotOf(it)));
+  }
   const centre = () => ({ x: W / 2, y: H / 2 });
 
   function rectOf(it) {
@@ -401,11 +446,14 @@ svg { display: block; }
     const vx1 = (W - view.x) / view.s + m, vy1 = (H - view.y) / view.s + m;
     for (const it of items) {
       const full = crop !== null && it.id === crop.id;
-      const r = full ? fullRectOf(it) : rectOf(it);
+      const r = full ? boundsOfPts(turnedCorners(fullRectOf(it), centreOf(it), rotOf(it))) : boundsOf(it);
       if (r.x > vx1 || r.y > vy1 || r.x + r.w < vx0 || r.y + r.h < vy0) continue;
-      if (it.type === 'stroke') drawStroke(c, it);
-      else if (it.type === 'image') drawPicture(c, it, full);
+      if (it.type === 'stroke') { drawStroke(c, it); continue; }
+      const a = rotOf(it);
+      if (a) { const k = centreOf(it); c.save(); c.translate(k.x, k.y); c.rotate(a); c.translate(-k.x, -k.y); }
+      if (it.type === 'image') drawPicture(c, it, full);
       else drawText(c, it);
+      if (a) c.restore();
     }
   }
 
@@ -470,25 +518,70 @@ svg { display: block; }
     c.lineTo(r[r.length - 2], r[r.length - 1]);
     c.stroke();
   }
+  function drawKnob(c, x, y, r) {
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+    c.save();
+    c.shadowColor = 'rgba(0, 0, 0, 0.28)'; c.shadowBlur = 4 * DPR; c.shadowOffsetY = DPR;
+    c.fillStyle = '#fff'; c.fill();
+    c.restore();
+    c.lineWidth = 2; c.strokeStyle = ACCENT; c.stroke();
+  }
+  // A small circular arrow inside the rotate knob.
+  function drawTurnArrow(c, x, y) {
+    const R = 5, a0 = -Math.PI / 3, a1 = (7 * Math.PI) / 6;
+    c.save();
+    c.strokeStyle = ACCENT; c.fillStyle = ACCENT; c.lineWidth = 1.6; c.lineCap = 'round';
+    c.beginPath(); c.arc(x, y, R, a0, a1); c.stroke();
+    const ex = x + R * Math.cos(a1), ey = y + R * Math.sin(a1);
+    const tx = -Math.sin(a1), ty = Math.cos(a1), nx = Math.cos(a1), ny = Math.sin(a1);
+    c.beginPath();
+    c.moveTo(ex + tx * 2.8, ey + ty * 2.8);
+    c.lineTo(ex - tx * 1.2 + nx * 2.4, ey - ty * 1.2 + ny * 2.4);
+    c.lineTo(ex - tx * 1.2 - nx * 2.4, ey - ty * 1.2 - ny * 2.4);
+    c.closePath(); c.fill();
+    c.restore();
+  }
+  // While turning, show the angle in the middle of the picture.
+  function drawAngle(c, it) {
+    let deg = Math.round((rotOf(it) * 180) / Math.PI);
+    deg = ((deg % 360) + 360) % 360;
+    const t = deg + '°', m = toScreenPt(centreOf(it));
+    c.save();
+    c.font = '600 14px ' + FONT;
+    const w = c.measureText(t).width + 20, h = 26, x = m.x - w / 2, y = m.y - h / 2, r = h / 2;
+    c.beginPath();
+    c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+    c.fillStyle = 'rgba(28, 28, 30, 0.88)'; c.fill();
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(t, m.x, m.y + 0.5);
+    c.restore();
+  }
   function drawSelection(c, it) {
-    const r = screenRect(rectOf(it));
+    const pts = cornersOf(it).map(toScreenPt);
     c.lineWidth = 1.5; c.strokeStyle = ACCENT;
-    c.strokeRect(r.x, r.y, r.w, r.h);
+    c.beginPath();
+    pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+    c.closePath(); c.stroke();
     if (gesture && gesture.kind === 'move' && gesture.moved) return;
-    for (const [x, y] of corners(r)) {
-      c.beginPath(); c.arc(x, y, HANDLE_RADIUS, 0, Math.PI * 2);
-      c.save();
-      c.shadowColor = 'rgba(0, 0, 0, 0.28)'; c.shadowBlur = 4 * DPR; c.shadowOffsetY = DPR;
-      c.fillStyle = '#fff'; c.fill();
-      c.restore();
-      c.lineWidth = 2; c.strokeStyle = ACCENT; c.stroke();
-    }
+    const top = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, knob = rotateHandleOf(it);
+    c.beginPath(); c.moveTo(top.x, top.y); c.lineTo(knob.x, knob.y);
+    c.lineWidth = 1.5; c.strokeStyle = ACCENT; c.stroke();
+    drawKnob(c, knob.x, knob.y, ROTATE_R);
+    drawTurnArrow(c, knob.x, knob.y);
+    for (const p of pts) drawKnob(c, p.x, p.y, HANDLE_RADIUS);
+    if (gesture && gesture.kind === 'rotate') drawAngle(c, it);
   }
   function drawCropFrame(c) {
     const it = byId(crop.id);
     if (!it) return;
-    const f = screenRect(fullRectOf(it));
-    const a = screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 });
+    // Draw in the picture's own frame: centred on the picture and turned with it, in screen pixels.
+    const k = centreOf(it), P = toScreenPt(k), s = view.s, fr = fullRectOf(it);
+    const f = { x: (fr.x - k.x) * s, y: (fr.y - k.y) * s, w: fr.w * s, h: fr.h * s };
+    const a = { x: (crop.x0 - k.x) * s, y: (crop.y0 - k.y) * s, w: (crop.x1 - crop.x0) * s, h: (crop.y1 - crop.y0) * s };
+    c.save();
+    c.translate(P.x, P.y);
+    c.rotate(rotOf(it));
     c.fillStyle = 'rgba(20, 20, 26, 0.55)';
     c.beginPath(); c.rect(f.x, f.y, f.w, f.h); c.rect(a.x, a.y, a.w, a.h); c.fill('evenodd');
     c.lineWidth = 1; c.strokeStyle = 'rgba(20, 20, 26, 0.35)';
@@ -513,6 +606,7 @@ svg { display: block; }
     c.moveTo(x1, my - E); c.lineTo(x1, my + E);
     c.stroke();
     c.restore();
+    c.restore();
   }
   function drawEraserRing(c, p) {
     c.beginPath(); c.arc(p.x, p.y, ERASER_RADIUS, 0, Math.PI * 2);
@@ -523,10 +617,19 @@ svg { display: block; }
   /* The dark menu that follows the selected picture */
   function placeCtx() {
     const sel = selected();
-    const busy = gesture && (gesture.kind === 'move' || gesture.kind === 'resize' || gesture.kind === 'crop-handle' || gesture.kind === 'crop-move');
+    const busy = gesture && (gesture.kind === 'move' || gesture.kind === 'resize' || gesture.kind === 'rotate' || gesture.kind === 'crop-handle' || gesture.kind === 'crop-move');
     let r = null;
     if (sel && !busy) {
-      r = crop ? screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 }) : screenRect(rectOf(sel));
+      const cit = crop ? byId(crop.id) : null;
+      let pts;
+      if (cit) {
+        pts = turnedCorners({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 }, centreOf(cit), rotOf(cit)).map(toScreenPt);
+      } else {
+        pts = cornersOf(sel).map(toScreenPt);
+        const k = rotateHandleOf(sel);
+        pts.push({ x: k.x - ROTATE_R, y: k.y - ROTATE_R }, { x: k.x + ROTATE_R, y: k.y + ROTATE_R });
+      }
+      r = boundsOfPts(pts);
       if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) r = null;
     }
     if (!r) { if (!ctxEl.hidden) ctxEl.hidden = true; return; }
@@ -665,33 +768,42 @@ svg { display: block; }
   function hitTest(w) {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
-      if (it.type !== 'stroke' && inRect(rectOf(it), w)) return it;
+      if (it.type !== 'stroke' && insideItem(it, w)) return it;
     }
     return null;
   }
-  function hitHandle(it, sx, sy) {
-    const r = screenRect(rectOf(it));
-    const reach = clamp(Math.min(r.w, r.h) / 3, 12, 26);
-    const names = ['nw', 'ne', 'se', 'sw'], cs = corners(r);
+  // Which part of the selected item is under a screen point: a corner, the rotate knob or nothing.
+  function hitPart(it, sx, sy) {
+    const r = rectOf(it), pts = cornersOf(it).map(toScreenPt);
+    const reach = clamp((Math.min(r.w, r.h) * view.s) / 3, 12, 26);
+    const names = ['nw', 'ne', 'se', 'sw'];
     let best = null, bd = reach;
     for (let i = 0; i < 4; i++) {
-      const d = Math.hypot(sx - cs[i][0], sy - cs[i][1]);
+      const d = Math.hypot(sx - pts[i].x, sy - pts[i].y);
       if (d <= bd) { bd = d; best = names[i]; }
     }
+    const k = rotateHandleOf(it), dk = Math.hypot(sx - k.x, sy - k.y);
+    if (dk <= 22 && (!best || dk < bd)) best = 'rotate';
     return best;
   }
+  // A world point in the cropped picture's own unturned frame.
+  function cropLocal(w) {
+    const it = crop && byId(crop.id);
+    return it ? rotPt(w, centreOf(it), -rotOf(it)) : w;
+  }
   function hitCropHandle(sx, sy) {
-    const a = screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 });
-    const x1 = a.x + a.w, y1 = a.y + a.h;
-    const named = [['nw', a.x, a.y], ['ne', x1, a.y], ['se', x1, y1], ['sw', a.x, y1]];
+    // Measured in screen pixels inside the picture's own frame, so handles keep their size at any zoom or angle.
+    const lp = cropLocal(toWorld(sx, sy)), s = view.s;
+    const px = lp.x * s, py = lp.y * s, ax = crop.x0 * s, ay = crop.y0 * s, x1 = crop.x1 * s, y1 = crop.y1 * s;
+    const named = [['nw', ax, ay], ['ne', x1, ay], ['se', x1, y1], ['sw', ax, y1]];
     let best = null, bd = 26;
-    for (const [n, x, y] of named) { const d = Math.hypot(sx - x, sy - y); if (d <= bd) { bd = d; best = n; } }
+    for (const [n, x, y] of named) { const d = Math.hypot(px - x, py - y); if (d <= bd) { bd = d; best = n; } }
     if (best) return best;
-    const T = 18, inX = sx > a.x && sx < x1, inY = sy > a.y && sy < y1;
-    if (inX && Math.abs(sy - a.y) <= T) return 'n';
-    if (inX && Math.abs(sy - y1) <= T) return 's';
-    if (inY && Math.abs(sx - a.x) <= T) return 'w';
-    if (inY && Math.abs(sx - x1) <= T) return 'e';
+    const T = 18, inX = px > ax && px < x1, inY = py > ay && py < y1;
+    if (inX && Math.abs(py - ay) <= T) return 'n';
+    if (inX && Math.abs(py - y1) <= T) return 's';
+    if (inY && Math.abs(px - ax) <= T) return 'w';
+    if (inY && Math.abs(px - x1) <= T) return 'e';
     return null;
   }
 
@@ -732,10 +844,10 @@ svg { display: block; }
     const touch = p.type === 'touch', pen = p.type === 'pen';
     const use = touch && !fingerDraws ? 'select' : tool;
     if (crop) {
-      const h = hitCropHandle(p.x, p.y);
-      if (h) { gesture = { kind: 'crop-handle', id: p.id, touch, h, start: Object.assign({}, crop), p0: w }; dirty(); return; }
-      if (w.x >= crop.x0 && w.x <= crop.x1 && w.y >= crop.y0 && w.y <= crop.y1) {
-        gesture = { kind: 'crop-move', id: p.id, touch, start: Object.assign({}, crop), p0: w }; dirty(); return;
+      const h = hitCropHandle(p.x, p.y), lw = cropLocal(w);
+      if (h) { gesture = { kind: 'crop-handle', id: p.id, touch, h, start: Object.assign({}, crop), p0: lw }; dirty(); return; }
+      if (lw.x >= crop.x0 && lw.x <= crop.x1 && lw.y >= crop.y0 && lw.y <= crop.y1) {
+        gesture = { kind: 'crop-move', id: p.id, touch, start: Object.assign({}, crop), p0: lw }; dirty(); return;
       }
       startPan(p);
       gesture.tapFinishesCrop = true;          // a quick tap outside the crop box finishes the crop
@@ -743,9 +855,10 @@ svg { display: block; }
     }
     const sel = selected();
     if (sel) {
-      const h = hitHandle(sel, p.x, p.y);
-      if (h) { startResize(p, sel, h); return; }
-      if (inRect(rectOf(sel), w)) { startMove(p, sel, w); return; }
+      const part = hitPart(sel, p.x, p.y);
+      if (part === 'rotate') { startRotate(p, sel, w); return; }
+      if (part) { startResize(p, sel, part); return; }
+      if (insideItem(sel, w)) { startMove(p, sel, w); return; }
       if (use !== 'select') {
         selectedId = 0; dirty();
         if (!pen) { gesture = { kind: 'consume', id: p.id, touch }; return; }   // a tap away only closes the selection
@@ -770,12 +883,18 @@ svg { display: block; }
     dirty();
   }
   function startResize(p, it, h) {
-    const r = rectOf(it);
-    const pos = { nw: [r.x, r.y], ne: [r.x + r.w, r.y], se: [r.x + r.w, r.y + r.h], sw: [r.x, r.y + r.h] };
-    const opp = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' }[h];
+    const cs = cornersOf(it), i = { nw: 0, ne: 1, se: 2, sw: 3 }[h], A = cs[(i + 2) % 4];
     gesture = {
-      kind: 'resize', id: p.id, touch: p.type === 'touch', h, orig: it, before: items, r0: r,
-      ax: pos[opp][0], ay: pos[opp][1], cx: pos[h][0], cy: pos[h][1], changed: false,
+      kind: 'resize', id: p.id, touch: p.type === 'touch', h, orig: it, before: items, r0: rectOf(it),
+      A, D: { x: cs[i].x - A.x, y: cs[i].y - A.y }, changed: false,
+    };
+    dirty();
+  }
+  function startRotate(p, it, w) {
+    const c = centreOf(it);
+    gesture = {
+      kind: 'rotate', id: p.id, touch: p.type === 'touch', orig: it, before: items, c,
+      a0: Math.atan2(w.y - c.y, w.x - c.x), rot0: rotOf(it), changed: false,
     };
     dirty();
   }
@@ -797,7 +916,7 @@ svg { display: block; }
     if (g.kind === 'draw') {
       // A second finger right after the first means a pinch, so a just-started line is dropped.
       if (performance.now() - g.t0 > 300 && g.len > 12) commitStroke(g);
-    } else if ((g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize') && g.changed) {
+    } else if ((g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize' || g.kind === 'rotate') && g.changed) {
       pushUndo(g.before);
     }
     hoverPt = null;
@@ -862,6 +981,7 @@ svg { display: block; }
     if (g.kind === 'pan') { view.x = g.view0.x + (p.x - g.sx); view.y = g.view0.y + (p.y - g.sy); viewChanged(); }
     else if (g.kind === 'move') moveDrag(g, w);
     else if (g.kind === 'resize') resizeDrag(g, w);
+    else if (g.kind === 'rotate') rotateDrag(g, w);
     else if (g.kind === 'crop-handle') cropHandleDrag(g, w);
     else if (g.kind === 'crop-move') cropMoveDrag(g, w);
   }
@@ -878,24 +998,33 @@ svg { display: block; }
   }
   // Corner handles scale the picture evenly, with the opposite corner pinned in place.
   function resizeDrag(g, w) {
-    const vx = g.cx - g.ax, vy = g.cy - g.ay;
-    let k = ((w.x - g.ax) * vx + (w.y - g.ay) * vy) / (vx * vx + vy * vy || 1);
+    const D = g.D;
+    let k = ((w.x - g.A.x) * D.x + (w.y - g.A.y) * D.y) / (D.x * D.x + D.y * D.y || 1);
     const minK = (24 / view.s) / Math.max(1e-9, Math.min(g.r0.w, g.r0.h));
     k = Math.max(k, minK);
     const nw = g.r0.w * k, nh = g.r0.h * k;
-    const x = g.h === 'nw' || g.h === 'sw' ? g.ax - nw : g.ax;
-    const y = g.h === 'nw' || g.h === 'ne' ? g.ay - nh : g.ay;
+    // The new centre sits halfway along the scaled diagonal from the pinned corner, at any angle.
+    const x = g.A.x + (D.x * k) / 2 - nw / 2, y = g.A.y + (D.y * k) / 2 - nh / 2;
     const o = g.orig;
     const next = o.type === 'image' ? Object.assign({}, o, { s: o.s * k, x, y }) : Object.assign({}, o, { k: o.k * k, x, y });
     items = replaceItem(items, next);
     g.changed = true;
     dirty(true);
   }
+  // Turn about the centre. Within 4° of a multiple of 45° the angle snaps to it.
+  function rotateDrag(g, w) {
+    let a = normAngle(g.rot0 + Math.atan2(w.y - g.c.y, w.x - g.c.x) - g.a0);
+    const step = Math.PI / 4, n = Math.round(a / step);
+    if (Math.abs(a - n * step) < (4 * Math.PI) / 180) a = normAngle(n * step);
+    items = replaceItem(items, Object.assign({}, g.orig, { rot: a }));
+    g.changed = a !== g.rot0;               // back where it started means nothing to undo
+    dirty(true);
+  }
   function cropHandleDrag(g, w) {
     const it = byId(crop.id);
     if (!it) return;
-    const f = fullRectOf(it);
-    const dx = w.x - g.p0.x, dy = w.y - g.p0.y;
+    const f = fullRectOf(it), lw = cropLocal(w);
+    const dx = lw.x - g.p0.x, dy = lw.y - g.p0.y;
     const minW = Math.min(24 / view.s, f.w), minH = Math.min(24 / view.s, f.h);
     let x0 = g.start.x0, y0 = g.start.y0, x1 = g.start.x1, y1 = g.start.y1;
     if (g.h.indexOf('w') >= 0) x0 = clamp(x0 + dx, f.x, x1 - minW);
@@ -908,10 +1037,10 @@ svg { display: block; }
   function cropMoveDrag(g, w) {
     const it = byId(crop.id);
     if (!it) return;
-    const f = fullRectOf(it);
+    const f = fullRectOf(it), lw = cropLocal(w);
     const cw = g.start.x1 - g.start.x0, ch = g.start.y1 - g.start.y0;
-    const x0 = clamp(g.start.x0 + (w.x - g.p0.x), f.x, f.x + f.w - cw);
-    const y0 = clamp(g.start.y0 + (w.y - g.p0.y), f.y, f.y + f.h - ch);
+    const x0 = clamp(g.start.x0 + (lw.x - g.p0.x), f.x, f.x + f.w - cw);
+    const y0 = clamp(g.start.y0 + (lw.y - g.p0.y), f.y, f.y + f.h - ch);
     crop.x0 = x0; crop.y0 = y0; crop.x1 = x0 + cw; crop.y1 = y0 + ch;
     dirty();
   }
@@ -938,7 +1067,7 @@ svg { display: block; }
     clearTimeout(g.hold);
     if (g.kind === 'draw') {
       if (!cancelled || g.pen || g.len > 12) commitStroke(g);
-    } else if (g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize') {
+    } else if (g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize' || g.kind === 'rotate') {
       if (g.changed) pushUndo(g.before);
     } else if (g.kind === 'pan') {
       if (cancelled && g.touch) { Object.assign(view, g.view0); viewChanged(); }
@@ -955,23 +1084,27 @@ svg { display: block; }
       if (stage.style.cursor !== c) stage.style.cursor = c;
     }
   }
-  function cursorFor(h) {
-    if (h === 'nw' || h === 'se') return 'nwse-resize';
-    if (h === 'ne' || h === 'sw') return 'nesw-resize';
-    return h === 'n' || h === 's' ? 'ns-resize' : 'ew-resize';
+  // A resize cursor for a handle, turned to match the picture's angle.
+  const HANDLE_DIRS = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1], n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+  function cursorFor(h, a) {
+    const d = HANDLE_DIRS[h], cs = Math.cos(a), sn = Math.sin(a);
+    let t = Math.atan2(d[0] * sn + d[1] * cs, d[0] * cs - d[1] * sn);
+    if (t < 0) t += Math.PI;
+    return ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.round(t / (Math.PI / 4)) % 4];
   }
   function cursorAt(sx, sy) {
     const w = toWorld(sx, sy);
     if (crop) {
-      const h = hitCropHandle(sx, sy);
-      if (h) return cursorFor(h);
-      return w.x >= crop.x0 && w.x <= crop.x1 && w.y >= crop.y0 && w.y <= crop.y1 ? 'move' : 'grab';
+      const it = byId(crop.id), h = hitCropHandle(sx, sy), lw = cropLocal(w);
+      if (h) return cursorFor(h, it ? rotOf(it) : 0);
+      return lw.x >= crop.x0 && lw.x <= crop.x1 && lw.y >= crop.y0 && lw.y <= crop.y1 ? 'move' : 'grab';
     }
     const sel = selected();
     if (sel) {
-      const h = hitHandle(sel, sx, sy);
-      if (h) return cursorFor(h);
-      if (inRect(rectOf(sel), w)) return 'move';
+      const part = hitPart(sel, sx, sy);
+      if (part === 'rotate') return 'grab';
+      if (part) return cursorFor(part, rotOf(sel));
+      if (insideItem(sel, w)) return 'move';
     }
     if (tool === 'select') return hitTest(w) ? 'move' : 'grab';
     return tool === 'eraser' ? 'none' : 'crosshair';
@@ -1024,7 +1157,7 @@ svg { display: block; }
   document.addEventListener('selectstart', (e) => { if (!pasteZone.contains(e.target)) e.preventDefault(); });
 
   /* ---------- History ---------- */
-  const BUSY = { erase: 1, move: 1, resize: 1, 'crop-handle': 1, 'crop-move': 1 };
+  const BUSY = { erase: 1, move: 1, resize: 1, rotate: 1, 'crop-handle': 1, 'crop-move': 1 };
   function pushUndo(prev) {
     undoStack.push(prev);
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
@@ -1092,10 +1225,18 @@ svg { display: block; }
       const cw = clamp(Math.round((c.x1 - c.x0) / it.s), 1, it.nw - cx);
       const ch = clamp(Math.round((c.y1 - c.y0) / it.s), 1, it.nh - cy);
       if (cx !== it.cx || cy !== it.cy || cw !== it.cw || ch !== it.ch) {
-        commit(replaceItem(items, Object.assign({}, it, { cx, cy, cw, ch, x: f.x + cx * it.s, y: f.y + cy * it.s })));
+        // Keep the part you kept exactly where it was, even when the picture is turned.
+        const mid = rotPt({ x: f.x + (cx + cw / 2) * it.s, y: f.y + (cy + ch / 2) * it.s }, centreOf(it), rotOf(it));
+        commit(replaceItem(items, Object.assign({}, it, { cx, cy, cw, ch, x: mid.x - (cw * it.s) / 2, y: mid.y - (ch * it.s) / 2 })));
       }
     }
     dirty(true);
+  }
+  function rotateSelected(delta) {
+    if (crop) finishCrop(true);
+    const it = selected();
+    if (!it) return;
+    commit(replaceItem(items, Object.assign({}, it, { rot: normAngle(rotOf(it) + delta) })));
   }
   function reorder(front) {
     const it = selected();
@@ -1143,7 +1284,7 @@ svg { display: block; }
     if (!items.length) { zoomAround(W / 2, H / 2, 1); return; }
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const it of items) {
-      const r = rectOf(it);
+      const r = boundsOf(it);
       x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y);
       x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h);
     }
@@ -1457,6 +1598,15 @@ svg { display: block; }
       .catch(() => openPasteSheet(false));       // permission refused or Paste dismissed: offer the paste box
   });
   $('pasteClose').addEventListener('click', () => closePopovers());
+  // Opens the photo picker: on iPhone and iPad this offers Photo Library, Take Photo or Choose File.
+  function pickPhotos() {
+    closePopovers();
+    if (crop) finishCrop(true);
+    fileInput.value = '';
+    fileInput.click();
+  }
+  photoBtn.addEventListener('click', pickPhotos);
+  $('choosePhoto').addEventListener('click', pickPhotos);
   $('clearBtn').addEventListener('click', () => {
     closePopovers();
     if (!items.length) { toast('The board is already empty.'); return; }
@@ -1475,6 +1625,7 @@ svg { display: block; }
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'crop') startCrop();
+    else if (act === 'rotate') rotateSelected(Math.PI / 2);
     else if (act === 'front') reorder(true);
     else if (act === 'back') reorder(false);
     else if (act === 'delete') deleteSelected();
@@ -1510,6 +1661,7 @@ svg { display: block; }
     if (k === 'v') setTool('select');
     else if (k === 'p') setTool('pen');
     else if (k === 'e') setTool('eraser');
+    else if (k === 'r' && selectedId) rotateSelected(e.shiftKey ? -Math.PI / 2 : Math.PI / 2);
     else if (k === 'enter' && crop) { e.preventDefault(); finishCrop(true); }
     else if ((k === 'backspace' || k === 'delete') && selectedId && !crop) { e.preventDefault(); deleteSelected(); }
   });
