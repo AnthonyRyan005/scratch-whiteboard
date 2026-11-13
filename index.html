@@ -1,0 +1,1550 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Whiteboard">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>Scratch Whiteboard</title>
+<style>
+:root {
+  /* Layout: a borderless white board fills the screen; small frosted controls float at the safe-area edges. */
+  --board: #ffffff;
+  --ink: #1c1c1e;
+  --muted: #6b6b73;
+  --chrome: rgba(250, 250, 252, 0.9);
+  --hairline: rgba(30, 30, 50, 0.12);
+  --accent: #007aff;
+  --accent-soft: rgba(0, 122, 255, 0.12);
+  --menu: #1f1f21;
+  --danger: #ff6961;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --shadow: 0 10px 30px rgba(24, 24, 44, 0.12), 0 1px 3px rgba(24, 24, 44, 0.1);
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --pen: #1c1c1e;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  height: 100%; margin: 0; padding: 0; overflow: hidden;
+  background: var(--board); color: var(--ink);
+  font: 15px/1.4 var(--font-ui);
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+body {
+  position: fixed; inset: 0; touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+#stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; cursor: crosshair; background: var(--board); }
+#stage[data-tool="select"] { cursor: grab; }
+#stage canvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
+button {
+  font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0;
+  cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+button:disabled { cursor: default; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+svg { display: block; }
+.vh { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#safeProbe { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden; pointer-events: none; padding: var(--sat) var(--sar) var(--sab) var(--sal); }
+
+/* Floating bars */
+.bar {
+  position: fixed; z-index: 20; display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: var(--chrome);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border: 0.5px solid var(--hairline); border-radius: 20px; box-shadow: var(--shadow);
+}
+#toolbar { left: 50%; bottom: calc(var(--sab) + 12px); transform: translateX(-50%); padding: 5px; border-radius: 24px; }
+#clearBar { top: calc(var(--sat) + 10px); left: calc(var(--sal) + 12px); }
+#zoomBar { top: calc(var(--sat) + 10px); right: calc(var(--sar) + 12px); }
+.ibtn {
+  position: relative; width: 44px; height: 44px; border-radius: 15px; flex: none;
+  display: grid; place-items: center; color: var(--ink);
+  transition: background-color .15s ease, color .15s ease, transform .1s ease;
+}
+.ibtn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ibtn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.ibtn:disabled { opacity: .3; }
+.ibtn:active:not(:disabled) { transform: scale(.92); }
+.pen-dot { position: absolute; right: 6px; bottom: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--pen); box-shadow: 0 0 0 2px #fff; pointer-events: none; }
+.sep { flex: none; width: 1px; height: 26px; margin: 0 4px; background: var(--hairline); }
+.tbtn { height: 36px; padding: 0 14px 0 11px; border-radius: 15px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.tbtn svg, .zbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.zbtn { width: 36px; height: 36px; border-radius: 13px; display: grid; place-items: center; }
+#zoomLabel { min-width: 58px; height: 36px; padding: 0 6px; border-radius: 13px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tbtn:active, .zbtn:active, #zoomLabel:active { background: rgba(30, 30, 50, .08); }
+@media (hover: hover) and (pointer: fine) {
+  .ibtn:hover:not(:disabled):not([aria-pressed="true"]), .tbtn:hover, .zbtn:hover, #zoomLabel:hover { background: rgba(30, 30, 50, .06); }
+}
+
+/* Popovers */
+.pop, .menu {
+  position: fixed; z-index: 30;
+  background: var(--chrome);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  border: 0.5px solid var(--hairline); box-shadow: var(--shadow);
+}
+.pop { left: 50%; bottom: calc(var(--sab) + 80px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 24px); padding: 14px; border-radius: 22px; display: grid; gap: 12px; }
+.pop[hidden], .menu[hidden], .ctx[hidden] { display: none; }
+.swatches, .sizes { display: flex; justify-content: center; gap: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12); }
+.swatch[aria-checked="true"] { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4.5px var(--c); }
+.size { width: 56px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(30, 30, 50, .05); }
+.size[aria-checked="true"] { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.size i { display: block; border-radius: 50%; background: var(--pen); }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 2px 0; cursor: pointer; }
+.switch-row[hidden] { display: none; }
+.switch {
+  -webkit-appearance: none; appearance: none; position: relative; flex: none; margin: 0;
+  width: 51px; height: 31px; border-radius: 16px; background: rgba(120, 120, 128, .24);
+  cursor: pointer; transition: background-color .2s ease;
+}
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .2); transition: transform .2s ease; }
+.switch:checked { background: #34c759; }
+.switch:checked::after { transform: translateX(20px); }
+
+.sheet { width: min(380px, calc(100vw - 24px)); }
+.zone-wrap { position: relative; }
+#pasteZone {
+  display: block; min-height: 116px; border-radius: 16px;
+  border: 2px dashed rgba(0, 122, 255, .45); background: rgba(0, 122, 255, .05);
+  color: transparent; caret-color: transparent; font-size: 16px; overflow: hidden; outline: none;
+  -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; touch-action: manipulation;
+}
+#pasteZone:focus { border-color: var(--accent); background: rgba(0, 122, 255, .08); }
+.zone-text { position: absolute; inset: 0; display: grid; place-content: center; gap: 3px; padding: 12px; text-align: center; pointer-events: none; }
+.zone-text strong { font-size: 17px; font-weight: 600; color: var(--accent); }
+.zone-text span { font-size: 14px; color: var(--muted); }
+.sheet-row { display: flex; gap: 8px; }
+.sheet-btn { flex: 1; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(30, 30, 50, .06); font-weight: 600; cursor: pointer; }
+.sheet-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sheet-btn:active { background: rgba(30, 30, 50, .12); }
+#fileInput:focus-visible + .sheet-btn { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.menu { top: calc(var(--sat) + 64px); right: calc(var(--sar) + 12px); min-width: 210px; padding: 6px; border-radius: 16px; display: grid; }
+.menu button { height: 44px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; }
+.menu button span { color: var(--muted); font-variant-numeric: tabular-nums; }
+.menu button:active { background: rgba(30, 30, 50, .08); }
+.menu button:disabled { opacity: .35; }
+
+/* Menu for the selected picture, styled like the iOS edit menu */
+.ctx { position: fixed; left: 0; top: 0; z-index: 25; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, .22); will-change: transform; }
+.ctx-group { display: flex; gap: 1px; background: rgba(255, 255, 255, .2); }
+.ctx button { height: 40px; padding: 0 14px; background: var(--menu); color: #fff; font-size: 15px; font-weight: 500; white-space: nowrap; }
+.ctx button:active { background: #3a3a3c; }
+.ctx .danger { color: var(--danger); }
+.ctx .strong { color: #64b5ff; font-weight: 700; }
+.ctx[data-mode="crop"] .ctx-edit, .ctx:not([data-mode="crop"]) .ctx-crop, .ctx[data-mode="text"] .img-only { display: none; }
+
+#toast {
+  position: fixed; z-index: 40; left: 50%; bottom: calc(var(--sab) + 80px);
+  max-width: calc(100vw - 32px); width: max-content;
+  display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-radius: 14px;
+  background: var(--menu); color: #fff; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+  opacity: 0; pointer-events: none; transform: translate(-50%, 8px);
+  transition: opacity .2s ease, transform .2s ease;
+}
+#toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+#toast button { color: #64b5ff; font-weight: 600; padding: 4px 2px; flex: none; }
+#toast button[hidden] { display: none; }
+
+#hint { position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -56%); pointer-events: none; color: var(--muted); transition: opacity .25s ease; }
+#hint.gone { opacity: 0; }
+#hint ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+#hint li { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+#hint svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 359px) {
+  .ibtn { width: 40px; height: 40px; }
+  .sep { margin: 0 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<h1 class="vh">Scratch Whiteboard</h1>
+
+<div id="stage" data-tool="pen">
+  <canvas id="board" role="img" aria-label="Whiteboard drawing area"></canvas>
+  <canvas id="overlay" aria-hidden="true"></canvas>
+</div>
+
+<div id="hint" aria-hidden="true">
+  <ul>
+    <li><svg viewBox="0 0 24 24"><path d="M15.2 4.8l4 4L9 19l-5 1 1-5z"/><path d="M13.4 6.6l4 4"/></svg>Draw with a finger or Apple Pencil</li>
+    <li><svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-6.5 6.5"/><path d="M4 20l6.5-6.5"/></svg>Pinch to zoom, two fingers to move</li>
+    <li><svg viewBox="0 0 24 24"><path d="M9 4.5H7.5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2H15"/><rect x="9" y="3" width="6" height="3.2" rx="1"/></svg>Paste adds pictures and text</li>
+    <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="8.6" cy="10.2" r="1.1"/><circle cx="12" cy="7.6" r="1.1"/><circle cx="15.4" cy="10.2" r="1.1"/></svg>Tap the pen again for colours</li>
+    <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>Nothing is saved</li>
+  </ul>
+</div>
+
+<div id="clearBar" class="bar">
+  <button id="clearBtn" class="tbtn" type="button" title="Clear the whole board">
+    <svg viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V5.2a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7"/><path d="M6.6 7l.9 11.3a2 2 0 0 0 2 1.8h5a2 2 0 0 0 2-1.8L17.4 7"/></svg>Clear
+  </button>
+</div>
+
+<div id="zoomBar" class="bar" role="group" aria-label="Zoom">
+  <button id="zoomOut" class="zbtn" type="button" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+  <button id="zoomLabel" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="zoomMenu" title="Zoom options">100%</button>
+  <button id="zoomIn" class="zbtn" type="button" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></svg></button>
+</div>
+<div id="zoomMenu" class="menu" role="menu" aria-label="Zoom options" hidden>
+  <button id="zoomFit" type="button" role="menuitem">Zoom to fit</button>
+  <button id="zoomReset" type="button" role="menuitem">Actual size <span>100%</span></button>
+</div>
+
+<div id="toolbar" class="bar" role="toolbar" aria-label="Tools">
+  <button class="ibtn tool" type="button" data-tool="select" aria-pressed="false" aria-label="Select and move" title="Select and move (V)">
+    <svg viewBox="0 0 24 24"><path d="M5.5 3.5v15.2l4.1-3.9 2.7 5.8 2.6-1.2-2.7-5.7h5.7z"/></svg>
+  </button>
+  <button class="ibtn tool" type="button" data-tool="pen" aria-pressed="true" aria-label="Pen" title="Pen (P). Tap again for colours" aria-haspopup="dialog" aria-expanded="false" aria-controls="penPop">
+    <svg viewBox="0 0 24 24"><path d="M15.2 4.8l4 4L9 19l-5 1 1-5z"/><path d="M13.4 6.6l4 4"/></svg><span class="pen-dot"></span>
+  </button>
+  <button class="ibtn tool" type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser" title="Eraser (E)">
+    <svg viewBox="0 0 24 24"><path d="M8.7 19.5l-4.4-4.4a1.7 1.7 0 0 1 0-2.4l8.4-8.4a1.7 1.7 0 0 1 2.4 0l4.5 4.5a1.7 1.7 0 0 1 0 2.4l-8.3 8.3z"/><path d="M8.2 9.2l7.1 7.1"/><path d="M11.4 19.5H20"/></svg>
+  </button>
+  <span class="sep" aria-hidden="true"></span>
+  <button id="pasteBtn" class="ibtn" type="button" aria-label="Paste" title="Paste" aria-haspopup="dialog" aria-expanded="false" aria-controls="pasteSheet">
+    <svg viewBox="0 0 24 24"><path d="M9 4.5H7.5a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2H15"/><rect x="9" y="3" width="6" height="3.2" rx="1"/></svg>
+  </button>
+  <span class="sep" aria-hidden="true"></span>
+  <button id="undoBtn" class="ibtn" type="button" aria-label="Undo" title="Undo" disabled>
+    <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+  </button>
+  <button id="redoBtn" class="ibtn" type="button" aria-label="Redo" title="Redo" disabled>
+    <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+  </button>
+</div>
+
+<div id="penPop" class="pop" role="dialog" aria-label="Pen options" hidden>
+  <div id="swatches" class="swatches" role="radiogroup" aria-label="Colour"></div>
+  <div id="sizes" class="sizes" role="radiogroup" aria-label="Thickness"></div>
+  <label id="fingerRow" class="switch-row" for="fingerToggle" hidden>
+    <span>Draw with finger too</span>
+    <input id="fingerToggle" class="switch" type="checkbox" role="switch">
+  </label>
+</div>
+
+<div id="pasteSheet" class="pop sheet" role="dialog" aria-label="Paste" hidden>
+  <div class="zone-wrap">
+    <div id="pasteZone" contenteditable="true" inputmode="none" role="textbox" aria-label="Paste area" spellcheck="false" autocorrect="off" autocapitalize="off"></div>
+    <div class="zone-text" aria-hidden="true"><strong id="zoneMain">Touch and hold here</strong><span id="zoneSub">then tap Paste</span></div>
+  </div>
+  <div class="sheet-row">
+    <input id="fileInput" class="vh" type="file" accept="image/*" multiple>
+    <label class="sheet-btn" for="fileInput"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-4.5-4.5L7 19"/></svg>Choose a photo</label>
+    <button id="pasteClose" class="sheet-btn" type="button">Cancel</button>
+  </div>
+</div>
+
+<div id="ctx" class="ctx" role="toolbar" aria-label="Selected item" hidden>
+  <div class="ctx-group ctx-edit">
+    <button type="button" class="img-only" data-act="crop">Crop</button>
+    <button type="button" data-act="front">To front</button>
+    <button type="button" data-act="back">To back</button>
+    <button type="button" class="danger" data-act="delete">Delete</button>
+  </div>
+  <div class="ctx-group ctx-crop">
+    <button type="button" data-act="crop-reset">Reset</button>
+    <button type="button" data-act="crop-cancel">Cancel</button>
+    <button type="button" class="strong" data-act="crop-done">Done</button>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastAction" type="button" hidden></button></div>
+<div id="safeProbe" aria-hidden="true"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Settings ---------- */
+  const MIN_SCALE = 0.05;
+  const MAX_SCALE = 10;
+  const MAX_IMAGE_SIDE = 2560;   // larger pictures are scaled down to keep memory use low
+  const ERASER_RADIUS = 14;      // screen px
+  const HANDLE_RADIUS = 8;       // screen px
+  const HISTORY_LIMIT = 200;
+  const ACCENT = '#007aff';
+  const COLOURS = [
+    ['Black', '#1c1c1e'], ['Blue', '#1660d8'], ['Red', '#d92b3a'],
+    ['Green', '#1d8a4c'], ['Orange', '#f07c00'], ['Purple', '#7a3fe0'],
+  ];
+  const SIZES = [['Fine', 2.5], ['Medium', 5], ['Bold', 10]];
+  const FONT = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim() || 'sans-serif';
+  const UA = navigator.userAgent, PLATFORM = navigator.platform || '';
+  const IS_IOS = /iPad|iPhone|iPod/.test(UA) || (/Mac/.test(PLATFORM) && navigator.maxTouchPoints > 1);
+  const IS_APPLE = IS_IOS || /Mac/.test(PLATFORM);
+  const COARSE = window.matchMedia('(pointer: coarse)').matches;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // Inside Claude the page runs in a frame that can't read the clipboard or keep an offline copy.
+  const FRAMED = (() => { try { return window.self !== window.top; } catch (_) { return true; } })();
+
+  /* ---------- Elements ---------- */
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage'), board = $('board'), overlay = $('overlay');
+  const bctx = board.getContext('2d'), octx = overlay.getContext('2d');
+  const hintEl = $('hint'), ctxEl = $('ctx');
+  const toastEl = $('toast'), toastMsg = $('toastMsg'), toastAction = $('toastAction');
+  const toolBtns = Array.from(document.querySelectorAll('.tool'));
+  const penBtn = document.querySelector('.tool[data-tool="pen"]');
+  const undoBtn = $('undoBtn'), redoBtn = $('redoBtn'), pasteBtn = $('pasteBtn');
+  const penPop = $('penPop'), pasteSheet = $('pasteSheet'), pasteZone = $('pasteZone');
+  const zoneMain = $('zoneMain'), zoneSub = $('zoneSub'), fileInput = $('fileInput');
+  const zoomLabel = $('zoomLabel'), zoomMenu = $('zoomMenu'), zoomFit = $('zoomFit');
+  const fingerRow = $('fingerRow'), fingerToggle = $('fingerToggle');
+  const safeProbe = $('safeProbe');
+  const measure = document.createElement('canvas').getContext('2d');
+
+  /* ---------- State: memory only. Nothing is written to storage, cookies or the network. ---------- */
+  let W = 1, H = 1, DPR = 1, sized = false;
+  const safe = { t: 0, r: 0, b: 0, l: 0 };
+  const view = { x: 0, y: 0, s: 1 };       // screen = world * s + (x, y)
+  let items = [];                          // bottom to top; items are replaced, never changed in place
+  const undoStack = [], redoStack = [];
+  let tool = 'pen', penColour = COLOURS[0][1], penSize = SIZES[1][1];
+  let selectedId = 0, crop = null;         // crop: { id, x0, y0, x1, y1 } in world units while cropping
+  let pencilSeen = false, fingerDraws = true;
+  let uid = 1, gesture = null, hoverPt = null;
+  const pointers = new Map(), ignored = new Set();
+  let needBoard = true, needOverlay = true, raf = 0, anim = 0;
+  const urls = new Set();
+
+  /* ---------- Helpers ---------- */
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const toWorld = (sx, sy) => ({ x: (sx - view.x) / view.s, y: (sy - view.y) / view.s });
+  const byId = (id) => { for (const it of items) if (it.id === id) return it; return null; };
+  const selected = () => (selectedId ? byId(selectedId) : null);
+  const replaceItem = (list, next) => list.map((it) => (it.id === next.id ? next : it));
+  const inRect = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  const corners = (r) => [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]];
+  const centre = () => ({ x: W / 2, y: H / 2 });
+
+  function rectOf(it) {
+    if (it.type === 'image') return { x: it.x, y: it.y, w: it.cw * it.s, h: it.ch * it.s };
+    if (it.type === 'text') return { x: it.x, y: it.y, w: it.bw * it.k, h: it.bh * it.k };
+    const b = it.bbox;
+    return { x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1] };
+  }
+  function fullRectOf(it) {
+    return { x: it.x - it.cx * it.s, y: it.y - it.cy * it.s, w: it.nw * it.s, h: it.nh * it.s };
+  }
+  function screenRect(r) {
+    return { x: r.x * view.s + view.x, y: r.y * view.s + view.y, w: r.w * view.s, h: r.h * view.s };
+  }
+
+  /* ---------- Sizing ---------- */
+  function readSafe() {
+    const cs = getComputedStyle(safeProbe);
+    safe.t = parseFloat(cs.paddingTop) || 0;
+    safe.r = parseFloat(cs.paddingRight) || 0;
+    safe.b = parseFloat(cs.paddingBottom) || 0;
+    safe.l = parseFloat(cs.paddingLeft) || 0;
+  }
+  function resize() {
+    const w = Math.max(1, Math.round(stage.clientWidth)), h = Math.max(1, Math.round(stage.clientHeight));
+    let dpr = window.devicePixelRatio || 1;
+    const maxPx = 16000000;                // iOS refuses canvases above about 16.7 million pixels
+    if (w * h * dpr * dpr > maxPx) dpr = Math.sqrt(maxPx / (w * h));
+    readSafe();
+    if (sized && w === W && h === H && dpr === DPR) { dirty(true); return; }
+    if (sized) { view.x += (w - W) / 2; view.y += (h - H) / 2; }
+    W = w; H = h; DPR = dpr; sized = true;
+    for (const c of [board, overlay]) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+      c.style.width = w + 'px'; c.style.height = h + 'px';
+    }
+    dirty(true);
+  }
+
+  /* ---------- Rendering ---------- */
+  function schedule() { if (!raf) raf = requestAnimationFrame(frame); }
+  function frame() {
+    raf = 0;
+    if (needBoard) { needBoard = false; renderBoard(); }
+    if (needOverlay) { needOverlay = false; renderOverlay(); }
+  }
+  function dirty(all) { if (all) needBoard = true; needOverlay = true; schedule(); }
+  function viewChanged() { dirty(true); updateZoomLabel(); }
+
+  function renderBoard() {
+    const c = bctx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, board.width, board.height);
+    const k = DPR * view.s;
+    c.setTransform(k, 0, 0, k, DPR * view.x, DPR * view.y);
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in c) c.imageSmoothingQuality = 'high';
+    const m = 4 / view.s;
+    const vx0 = -view.x / view.s - m, vy0 = -view.y / view.s - m;
+    const vx1 = (W - view.x) / view.s + m, vy1 = (H - view.y) / view.s + m;
+    for (const it of items) {
+      const full = crop !== null && it.id === crop.id;
+      const r = full ? fullRectOf(it) : rectOf(it);
+      if (r.x > vx1 || r.y > vy1 || r.x + r.w < vx0 || r.y + r.h < vy0) continue;
+      if (it.type === 'stroke') drawStroke(c, it);
+      else if (it.type === 'image') drawPicture(c, it, full);
+      else drawText(c, it);
+    }
+  }
+
+  function strokePath(it) {
+    if (it._path) return it._path;
+    const p = new Path2D(), a = it.pts;
+    if (a.length === 2) p.arc(a[0], a[1], it.w / 2, 0, Math.PI * 2);
+    else {
+      p.moveTo(a[0], a[1]);
+      for (let i = 2; i < a.length; i += 2) p.lineTo(a[i], a[i + 1]);
+    }
+    it._path = p;                          // cache only: a stroke's points never change
+    return p;
+  }
+  function drawStroke(c, it) {
+    if (it.pts.length === 2) { c.fillStyle = it.colour; c.fill(strokePath(it)); return; }
+    c.strokeStyle = it.colour; c.lineWidth = it.w; c.stroke(strokePath(it));
+  }
+  function drawPicture(c, it, full) {
+    if (full) c.drawImage(it.img, it.x - it.cx * it.s, it.y - it.cy * it.s, it.nw * it.s, it.nh * it.s);
+    else c.drawImage(it.img, it.cx, it.cy, it.cw, it.ch, it.x, it.y, it.cw * it.s, it.ch * it.s);
+  }
+  function drawText(c, it) {
+    c.save();
+    c.translate(it.x, it.y);
+    c.scale(it.k, it.k);
+    c.fillStyle = it.colour;
+    c.font = it.fs + 'px ' + FONT;
+    c.textBaseline = 'top';
+    for (let i = 0; i < it.lines.length; i++) c.fillText(it.lines[i], it.pad, it.pad + i * it.lh + (it.lh - it.fs) / 2);
+    c.restore();
+  }
+
+  function renderOverlay() {
+    const c = octx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, overlay.width, overlay.height);
+    const g = gesture;
+    if (g && g.kind === 'draw') {
+      const k = DPR * view.s;
+      c.setTransform(k, 0, 0, k, DPR * view.x, DPR * view.y);
+      drawLive(c, g);
+    }
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (crop) drawCropFrame(c);
+    else { const sel = selected(); if (sel) drawSelection(c, sel); }
+    if (hoverPt) drawEraserRing(c, hoverPt);
+    placeCtx();
+  }
+  function drawLive(c, g) {
+    const r = g.raw, p = g.pts;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    if (r.length === 2) {
+      c.fillStyle = g.colour;
+      c.beginPath(); c.arc(r[0], r[1], g.w / 2, 0, Math.PI * 2); c.fill();
+      return;
+    }
+    c.strokeStyle = g.colour; c.lineWidth = g.w;
+    c.beginPath(); c.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length; i += 2) c.lineTo(p[i], p[i + 1]);
+    c.lineTo(r[r.length - 2], r[r.length - 1]);
+    c.stroke();
+  }
+  function drawSelection(c, it) {
+    const r = screenRect(rectOf(it));
+    c.lineWidth = 1.5; c.strokeStyle = ACCENT;
+    c.strokeRect(r.x, r.y, r.w, r.h);
+    if (gesture && gesture.kind === 'move' && gesture.moved) return;
+    for (const [x, y] of corners(r)) {
+      c.beginPath(); c.arc(x, y, HANDLE_RADIUS, 0, Math.PI * 2);
+      c.save();
+      c.shadowColor = 'rgba(0, 0, 0, 0.28)'; c.shadowBlur = 4 * DPR; c.shadowOffsetY = DPR;
+      c.fillStyle = '#fff'; c.fill();
+      c.restore();
+      c.lineWidth = 2; c.strokeStyle = ACCENT; c.stroke();
+    }
+  }
+  function drawCropFrame(c) {
+    const it = byId(crop.id);
+    if (!it) return;
+    const f = screenRect(fullRectOf(it));
+    const a = screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 });
+    c.fillStyle = 'rgba(20, 20, 26, 0.55)';
+    c.beginPath(); c.rect(f.x, f.y, f.w, f.h); c.rect(a.x, a.y, a.w, a.h); c.fill('evenodd');
+    c.lineWidth = 1; c.strokeStyle = 'rgba(20, 20, 26, 0.35)';
+    c.strokeRect(f.x + 0.5, f.y + 0.5, Math.max(0, f.w - 1), Math.max(0, f.h - 1));
+    c.save();
+    c.shadowColor = 'rgba(0, 0, 0, 0.5)'; c.shadowBlur = 3 * DPR;
+    c.strokeStyle = '#fff'; c.lineWidth = 1.5;
+    c.strokeRect(a.x, a.y, a.w, a.h);
+    const x1 = a.x + a.w, y1 = a.y + a.h;
+    const L = Math.max(6, Math.min(22, a.w / 3, a.h / 3));
+    const E = Math.max(4, Math.min(12, a.w / 6, a.h / 6));
+    const mx = a.x + a.w / 2, my = a.y + a.h / 2;
+    c.lineWidth = 4; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    c.moveTo(a.x, a.y + L); c.lineTo(a.x, a.y); c.lineTo(a.x + L, a.y);
+    c.moveTo(x1 - L, a.y); c.lineTo(x1, a.y); c.lineTo(x1, a.y + L);
+    c.moveTo(x1, y1 - L); c.lineTo(x1, y1); c.lineTo(x1 - L, y1);
+    c.moveTo(a.x + L, y1); c.lineTo(a.x, y1); c.lineTo(a.x, y1 - L);
+    c.moveTo(mx - E, a.y); c.lineTo(mx + E, a.y);
+    c.moveTo(mx - E, y1); c.lineTo(mx + E, y1);
+    c.moveTo(a.x, my - E); c.lineTo(a.x, my + E);
+    c.moveTo(x1, my - E); c.lineTo(x1, my + E);
+    c.stroke();
+    c.restore();
+  }
+  function drawEraserRing(c, p) {
+    c.beginPath(); c.arc(p.x, p.y, ERASER_RADIUS, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255, 255, 255, 0.45)'; c.fill();
+    c.lineWidth = 1.5; c.strokeStyle = 'rgba(60, 60, 67, 0.65)'; c.stroke();
+  }
+
+  /* The dark menu that follows the selected picture */
+  function placeCtx() {
+    const sel = selected();
+    const busy = gesture && (gesture.kind === 'move' || gesture.kind === 'resize' || gesture.kind === 'crop-handle' || gesture.kind === 'crop-move');
+    let r = null;
+    if (sel && !busy) {
+      r = crop ? screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 }) : screenRect(rectOf(sel));
+      if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) r = null;
+    }
+    if (!r) { if (!ctxEl.hidden) ctxEl.hidden = true; return; }
+    const mode = crop ? 'crop' : sel.type;
+    if (ctxEl.dataset.mode !== mode) ctxEl.dataset.mode = mode;
+    if (ctxEl.hidden) ctxEl.hidden = false;
+    const cw = ctxEl.offsetWidth, ch = ctxEl.offsetHeight;
+    const top = safe.t + 60, bottom = H - safe.b - 80;
+    const x = clamp(r.x + r.w / 2 - cw / 2, safe.l + 8, W - safe.r - cw - 8);
+    let y = r.y - ch - 18;
+    if (y < top) {
+      y = r.y + r.h + 18;
+      if (y + ch > bottom) y = clamp(r.y + 18, top, bottom - ch);
+    }
+    ctxEl.style.transform = 'translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+  }
+
+  /* ---------- Strokes ---------- */
+  function makeStroke(pts, w, colour) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < pts.length; i += 2) {
+      const x = pts[i], y = pts[i + 1];
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    const h = w / 2;
+    return { id: uid++, type: 'stroke', pts, w, colour, bbox: [x0 - h, y0 - h, x1 + h, y1 + h] };
+  }
+  function sampleLine(out, x0, y0, x1, y1, gap) {
+    const d = Math.hypot(x1 - x0, y1 - y0);
+    if (d < 1e-9) return;
+    const n = Math.max(1, Math.ceil(d / gap));
+    for (let k = 1; k <= n; k++) { const t = k / n; out.push(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t); }
+  }
+  function sampleQuad(out, sx, sy, cx, cy, ex, ey, gap) {
+    const len = (Math.hypot(cx - sx, cy - sy) + Math.hypot(ex - cx, ey - cy) + Math.hypot(ex - sx, ey - sy)) / 2;
+    if (len < 1e-9) return;
+    const n = Math.max(1, Math.ceil(len / gap));
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, u = 1 - t;
+      out.push(u * u * sx + 2 * u * t * cx + t * t * ex, u * u * sy + 2 * u * t * cy + t * t * ey);
+    }
+  }
+  function startStroke(p, w) {
+    const width = penSize / view.s;
+    const g = {
+      kind: 'draw', id: p.id, touch: p.type === 'touch', pen: p.type === 'pen', t0: p.t0,
+      colour: penColour, w: width, gap: Math.min(width / 2, 3 / view.s),
+      raw: [w.x, w.y], pts: [w.x, w.y], len: 0, hold: 0,
+    };
+    const hit = hitTest(w);
+    if (hit) g.hold = setTimeout(() => holdToSelect(g, hit.id), 450);   // touch and hold a picture to pick it up
+    gesture = g;
+    hintEl.classList.add('gone');
+    dirty();
+  }
+  // Points are smoothed with quadratic curves through midpoints, then stored densely so the eraser can cut them.
+  function drawAdd(g, wx, wy) {
+    const r = g.raw, n = r.length;
+    const lx = r[n - 2], ly = r[n - 1];
+    const d = Math.hypot(wx - lx, wy - ly);
+    if (d * view.s < 0.75) return;
+    g.len += d * view.s;
+    if (n >= 4) {
+      const pts = g.pts;
+      sampleQuad(pts, pts[pts.length - 2], pts[pts.length - 1], lx, ly, (lx + wx) / 2, (ly + wy) / 2, g.gap);
+    }
+    r.push(wx, wy);
+  }
+  function commitStroke(g) {
+    const r = g.raw;
+    let pts;
+    if (r.length === 2) pts = [r[0], r[1]];
+    else {
+      pts = g.pts.slice();
+      sampleLine(pts, pts[pts.length - 2], pts[pts.length - 1], r[r.length - 2], r[r.length - 1], g.gap);
+    }
+    commit(items.concat(makeStroke(pts, g.w, g.colour)));
+  }
+  function holdToSelect(g, id) {
+    if (gesture !== g || g.len > 8) return;
+    const it = byId(id), p = pointers.get(g.id);
+    if (!it || !p) return;
+    selectedId = id;
+    startMove(p, it, toWorld(p.x, p.y));
+    updateUI();
+  }
+
+  /* ---------- Eraser: cuts ink only, never pictures ---------- */
+  function startErase(p, w) {
+    gesture = { kind: 'erase', id: p.id, touch: p.type === 'touch', before: items, changed: false, last: w };
+    hoverPt = { x: p.x, y: p.y };
+    eraseSeg(gesture, w, w);
+    dirty();
+  }
+  function segDist2(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const x = ax + t * dx - px, y = ay + t * dy - py;
+    return x * x + y * y;
+  }
+  function eraseSeg(g, a, b) {
+    const r = ERASER_RADIUS / view.s;
+    const minX = Math.min(a.x, b.x) - r, maxX = Math.max(a.x, b.x) + r;
+    const minY = Math.min(a.y, b.y) - r, maxY = Math.max(a.y, b.y) + r;
+    let changed = false;
+    const out = [];
+    for (const it of items) {
+      if (it.type !== 'stroke') { out.push(it); continue; }
+      const bb = it.bbox;
+      if (bb[0] > maxX || bb[2] < minX || bb[1] > maxY || bb[3] < minY) { out.push(it); continue; }
+      const lim = r + it.w / 2, lim2 = lim * lim, p = it.pts, n = p.length >> 1;
+      const keep = new Uint8Array(n);
+      let hit = false;
+      for (let i = 0; i < n; i++) {
+        const k = segDist2(p[2 * i], p[2 * i + 1], a.x, a.y, b.x, b.y) > lim2;
+        keep[i] = k ? 1 : 0;
+        if (!k) hit = true;
+      }
+      if (!hit) { out.push(it); continue; }
+      changed = true;
+      let run = [];
+      for (let i = 0; i < n; i++) {
+        if (keep[i]) run.push(p[2 * i], p[2 * i + 1]);
+        else { if (run.length >= 4) out.push(makeStroke(run, it.w, it.colour)); run = []; }
+      }
+      if (run.length >= 4) out.push(makeStroke(run, it.w, it.colour));
+    }
+    if (changed) { items = out; g.changed = true; needBoard = true; }
+  }
+
+  /* ---------- Hit testing ---------- */
+  function hitTest(w) {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.type !== 'stroke' && inRect(rectOf(it), w)) return it;
+    }
+    return null;
+  }
+  function hitHandle(it, sx, sy) {
+    const r = screenRect(rectOf(it));
+    const reach = clamp(Math.min(r.w, r.h) / 3, 12, 26);
+    const names = ['nw', 'ne', 'se', 'sw'], cs = corners(r);
+    let best = null, bd = reach;
+    for (let i = 0; i < 4; i++) {
+      const d = Math.hypot(sx - cs[i][0], sy - cs[i][1]);
+      if (d <= bd) { bd = d; best = names[i]; }
+    }
+    return best;
+  }
+  function hitCropHandle(sx, sy) {
+    const a = screenRect({ x: crop.x0, y: crop.y0, w: crop.x1 - crop.x0, h: crop.y1 - crop.y0 });
+    const x1 = a.x + a.w, y1 = a.y + a.h;
+    const named = [['nw', a.x, a.y], ['ne', x1, a.y], ['se', x1, y1], ['sw', a.x, y1]];
+    let best = null, bd = 26;
+    for (const [n, x, y] of named) { const d = Math.hypot(sx - x, sy - y); if (d <= bd) { bd = d; best = n; } }
+    if (best) return best;
+    const T = 18, inX = sx > a.x && sx < x1, inY = sy > a.y && sy < y1;
+    if (inX && Math.abs(sy - a.y) <= T) return 'n';
+    if (inX && Math.abs(sy - y1) <= T) return 's';
+    if (inY && Math.abs(sx - a.x) <= T) return 'w';
+    if (inY && Math.abs(sx - x1) <= T) return 'e';
+    return null;
+  }
+
+  /* ---------- Pointer input ---------- */
+  const touchList = () => { const a = []; for (const q of pointers.values()) if (q.type === 'touch') a.push(q); return a; };
+  const penDown = () => { for (const q of pointers.values()) if (q.type === 'pen') return true; return false; };
+  function coalesced(e) {
+    if (typeof e.getCoalescedEvents === 'function') {
+      try { const list = e.getCoalescedEvents(); if (list && list.length) return list; } catch (_) { /* not supported */ }
+    }
+    return [e];
+  }
+
+  function onDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
+    e.preventDefault();
+    closePopovers();
+    stopAnim();
+    const type = e.pointerType || 'mouse';
+    if (type === 'touch' && penDown()) { ignored.add(e.pointerId); return; }   // a resting palm while the Pencil draws
+    if (type === 'touch' && e.isPrimary && touchList().length) clearLostTouches();
+    if (type === 'pen') { if (!pencilSeen) noticePencil(); dropTouches(); }
+    try { stage.setPointerCapture(e.pointerId); } catch (_) { /* capture is optional */ }
+    const p = { id: e.pointerId, type, x: e.clientX, y: e.clientY, t0: performance.now() };
+    pointers.set(p.id, p);
+    if (type === 'touch') {
+      const t = touchList();
+      if (t.length === 2) { startPinch(t[0], t[1]); return; }
+      if (t.length > 2) return;
+    }
+    if (gesture) return;
+    if (type === 'mouse' && e.button === 1) { startPan(p); return; }
+    startSingle(p);
+  }
+
+  function startSingle(p) {
+    const w = toWorld(p.x, p.y);
+    const touch = p.type === 'touch', pen = p.type === 'pen';
+    const use = touch && !fingerDraws ? 'select' : tool;
+    if (crop) {
+      const h = hitCropHandle(p.x, p.y);
+      if (h) { gesture = { kind: 'crop-handle', id: p.id, touch, h, start: Object.assign({}, crop), p0: w }; dirty(); return; }
+      if (w.x >= crop.x0 && w.x <= crop.x1 && w.y >= crop.y0 && w.y <= crop.y1) {
+        gesture = { kind: 'crop-move', id: p.id, touch, start: Object.assign({}, crop), p0: w }; dirty(); return;
+      }
+      startPan(p);
+      gesture.tapFinishesCrop = true;          // a quick tap outside the crop box finishes the crop
+      return;
+    }
+    const sel = selected();
+    if (sel) {
+      const h = hitHandle(sel, p.x, p.y);
+      if (h) { startResize(p, sel, h); return; }
+      if (inRect(rectOf(sel), w)) { startMove(p, sel, w); return; }
+      if (use !== 'select') {
+        selectedId = 0; dirty();
+        if (!pen) { gesture = { kind: 'consume', id: p.id, touch }; return; }   // a tap away only closes the selection
+      }
+    }
+    if (use === 'select') {
+      const hit = hitTest(w);
+      if (hit) { selectedId = hit.id; startMove(p, hit, w); return; }
+      if (selectedId) { selectedId = 0; dirty(); }
+      startPan(p);
+      return;
+    }
+    if (use === 'eraser') startErase(p, w);
+    else startStroke(p, w);
+  }
+
+  function startPan(p) {
+    gesture = { kind: 'pan', id: p.id, touch: p.type === 'touch', sx: p.x, sy: p.y, view0: Object.assign({}, view) };
+  }
+  function startMove(p, it, w) {
+    gesture = { kind: 'move', id: p.id, touch: p.type === 'touch', orig: it, before: items, p0: w, moved: false, changed: false };
+    dirty();
+  }
+  function startResize(p, it, h) {
+    const r = rectOf(it);
+    const pos = { nw: [r.x, r.y], ne: [r.x + r.w, r.y], se: [r.x + r.w, r.y + r.h], sw: [r.x, r.y + r.h] };
+    const opp = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' }[h];
+    gesture = {
+      kind: 'resize', id: p.id, touch: p.type === 'touch', h, orig: it, before: items, r0: r,
+      ax: pos[opp][0], ay: pos[opp][1], cx: pos[h][0], cy: pos[h][1], changed: false,
+    };
+    dirty();
+  }
+  function startPinch(a, b) {
+    let view0 = Object.assign({}, view);
+    if (gesture) {
+      if (gesture.view0) view0 = gesture.view0;
+      endForPinch(gesture);
+    }
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    gesture = {
+      kind: 'pinch', touch: true, a: a.id, b: b.id,
+      d0: Math.max(8, Math.hypot(b.x - a.x, b.y - a.y)), s0: view.s, w0: toWorld(cx, cy), view0,
+    };
+    dirty(); updateUI();
+  }
+  function endForPinch(g) {
+    clearTimeout(g.hold);
+    if (g.kind === 'draw') {
+      // A second finger right after the first means a pinch, so a just-started line is dropped.
+      if (performance.now() - g.t0 > 300 && g.len > 12) commitStroke(g);
+    } else if ((g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize') && g.changed) {
+      pushUndo(g.before);
+    }
+    hoverPt = null;
+  }
+  function pinchMove(g) {
+    const a = pointers.get(g.a), b = pointers.get(g.b);
+    if (!a || !b) return;
+    const d = Math.max(8, Math.hypot(b.x - a.x, b.y - a.y));
+    const s = clamp(g.s0 * d / g.d0, MIN_SCALE, MAX_SCALE);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    view.s = s; view.x = cx - g.w0.x * s; view.y = cy - g.w0.y * s;
+    viewChanged();
+  }
+  // When the Pencil lands, anything a resting palm started is undone and those touches are ignored.
+  function dropTouches() {
+    const g = gesture;
+    if (g && g.touch) {
+      clearTimeout(g.hold);
+      if (g.view0) { view.x = g.view0.x; view.y = g.view0.y; view.s = g.view0.s; viewChanged(); }
+      if (g.before) { items = g.before; afterItemsChanged(); }
+      gesture = null; hoverPt = null;
+      dirty(); updateUI();
+    }
+    for (const [id, q] of pointers) if (q.type === 'touch') { pointers.delete(id); ignored.add(id); }
+  }
+  // A new first finger means any touches still tracked never got their pointerup, so let them go.
+  function clearLostTouches() {
+    const g = gesture;
+    if (g && g.touch) {
+      clearTimeout(g.hold);
+      if (g.kind === 'draw' && g.len > 12) commitStroke(g);
+      else if (g.changed && g.before) pushUndo(g.before);
+      gesture = null;
+    }
+    for (const [id, q] of pointers) if (q.type === 'touch') pointers.delete(id);
+    ignored.clear();
+  }
+
+  function onMove(e) {
+    if (ignored.has(e.pointerId)) return;
+    const p = pointers.get(e.pointerId);
+    if (!p) { hover(e); return; }
+    e.preventDefault();
+    const g = gesture;
+    if (g && g.id === p.id && (g.kind === 'draw' || g.kind === 'erase')) {
+      for (const ev of coalesced(e)) {
+        const w = toWorld(ev.clientX, ev.clientY);
+        if (g.kind === 'draw') drawAdd(g, w.x, w.y);
+        else { eraseSeg(g, g.last, w); g.last = w; }
+      }
+      p.x = e.clientX; p.y = e.clientY;
+      if (g.kind === 'draw' && g.hold && g.len > 8) { clearTimeout(g.hold); g.hold = 0; }
+      if (g.kind === 'erase') hoverPt = { x: p.x, y: p.y };
+      dirty();
+      return;
+    }
+    p.x = e.clientX; p.y = e.clientY;
+    if (!g) return;
+    if (g.kind === 'pinch') { if (p.id === g.a || p.id === g.b) pinchMove(g); return; }
+    if (g.id !== p.id) return;
+    const w = toWorld(p.x, p.y);
+    if (g.kind === 'pan') { view.x = g.view0.x + (p.x - g.sx); view.y = g.view0.y + (p.y - g.sy); viewChanged(); }
+    else if (g.kind === 'move') moveDrag(g, w);
+    else if (g.kind === 'resize') resizeDrag(g, w);
+    else if (g.kind === 'crop-handle') cropHandleDrag(g, w);
+    else if (g.kind === 'crop-move') cropMoveDrag(g, w);
+  }
+
+  function moveDrag(g, w) {
+    const dx = w.x - g.p0.x, dy = w.y - g.p0.y;
+    if (!g.moved) {
+      if (Math.hypot(dx, dy) * view.s < 4) return;
+      g.moved = true;
+    }
+    items = replaceItem(items, Object.assign({}, g.orig, { x: g.orig.x + dx, y: g.orig.y + dy }));
+    g.changed = true;
+    dirty(true);
+  }
+  // Corner handles scale the picture evenly, with the opposite corner pinned in place.
+  function resizeDrag(g, w) {
+    const vx = g.cx - g.ax, vy = g.cy - g.ay;
+    let k = ((w.x - g.ax) * vx + (w.y - g.ay) * vy) / (vx * vx + vy * vy || 1);
+    const minK = (24 / view.s) / Math.max(1e-9, Math.min(g.r0.w, g.r0.h));
+    k = Math.max(k, minK);
+    const nw = g.r0.w * k, nh = g.r0.h * k;
+    const x = g.h === 'nw' || g.h === 'sw' ? g.ax - nw : g.ax;
+    const y = g.h === 'nw' || g.h === 'ne' ? g.ay - nh : g.ay;
+    const o = g.orig;
+    const next = o.type === 'image' ? Object.assign({}, o, { s: o.s * k, x, y }) : Object.assign({}, o, { k: o.k * k, x, y });
+    items = replaceItem(items, next);
+    g.changed = true;
+    dirty(true);
+  }
+  function cropHandleDrag(g, w) {
+    const it = byId(crop.id);
+    if (!it) return;
+    const f = fullRectOf(it);
+    const dx = w.x - g.p0.x, dy = w.y - g.p0.y;
+    const minW = Math.min(24 / view.s, f.w), minH = Math.min(24 / view.s, f.h);
+    let x0 = g.start.x0, y0 = g.start.y0, x1 = g.start.x1, y1 = g.start.y1;
+    if (g.h.indexOf('w') >= 0) x0 = clamp(x0 + dx, f.x, x1 - minW);
+    if (g.h.indexOf('e') >= 0) x1 = clamp(x1 + dx, x0 + minW, f.x + f.w);
+    if (g.h.indexOf('n') >= 0) y0 = clamp(y0 + dy, f.y, y1 - minH);
+    if (g.h.indexOf('s') >= 0) y1 = clamp(y1 + dy, y0 + minH, f.y + f.h);
+    crop.x0 = x0; crop.y0 = y0; crop.x1 = x1; crop.y1 = y1;
+    dirty();
+  }
+  function cropMoveDrag(g, w) {
+    const it = byId(crop.id);
+    if (!it) return;
+    const f = fullRectOf(it);
+    const cw = g.start.x1 - g.start.x0, ch = g.start.y1 - g.start.y0;
+    const x0 = clamp(g.start.x0 + (w.x - g.p0.x), f.x, f.x + f.w - cw);
+    const y0 = clamp(g.start.y0 + (w.y - g.p0.y), f.y, f.y + f.h - ch);
+    crop.x0 = x0; crop.y0 = y0; crop.x1 = x0 + cw; crop.y1 = y0 + ch;
+    dirty();
+  }
+
+  function release(e, cancelled) {
+    if (ignored.delete(e.pointerId)) return;
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    pointers.delete(p.id);
+    const g = gesture;
+    if (g) {
+      if (g.kind === 'pinch') { if (p.id === g.a || p.id === g.b) gesture = pointers.size ? { kind: 'wait', touch: true } : null; }
+      else if (g.kind === 'wait') { if (!pointers.size) gesture = null; }
+      else if (g.id === p.id) {
+        const tap = g.kind === 'pan' && Math.hypot(p.x - g.sx, p.y - g.sy) < 6 && performance.now() - p.t0 < 400;
+        finishGesture(g, cancelled, tap);
+        gesture = null;
+      }
+    }
+    if (p.type !== 'mouse' || cancelled) hoverPt = null;
+    dirty(); updateUI();
+  }
+  function finishGesture(g, cancelled, tap) {
+    clearTimeout(g.hold);
+    if (g.kind === 'draw') {
+      if (!cancelled || g.pen || g.len > 12) commitStroke(g);
+    } else if (g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize') {
+      if (g.changed) pushUndo(g.before);
+    } else if (g.kind === 'pan') {
+      if (cancelled && g.touch) { Object.assign(view, g.view0); viewChanged(); }
+      else if (tap && g.tapFinishesCrop && crop) finishCrop(true);
+    }
+  }
+
+  function hover(e) {
+    if (e.pointerType === 'touch') return;
+    if (tool === 'eraser') { hoverPt = { x: e.clientX, y: e.clientY }; dirty(); }
+    else if (hoverPt) { hoverPt = null; dirty(); }
+    if (e.pointerType === 'mouse') {
+      const c = cursorAt(e.clientX, e.clientY);
+      if (stage.style.cursor !== c) stage.style.cursor = c;
+    }
+  }
+  function cursorFor(h) {
+    if (h === 'nw' || h === 'se') return 'nwse-resize';
+    if (h === 'ne' || h === 'sw') return 'nesw-resize';
+    return h === 'n' || h === 's' ? 'ns-resize' : 'ew-resize';
+  }
+  function cursorAt(sx, sy) {
+    const w = toWorld(sx, sy);
+    if (crop) {
+      const h = hitCropHandle(sx, sy);
+      if (h) return cursorFor(h);
+      return w.x >= crop.x0 && w.x <= crop.x1 && w.y >= crop.y0 && w.y <= crop.y1 ? 'move' : 'grab';
+    }
+    const sel = selected();
+    if (sel) {
+      const h = hitHandle(sel, sx, sy);
+      if (h) return cursorFor(h);
+      if (inRect(rectOf(sel), w)) return 'move';
+    }
+    if (tool === 'select') return hitTest(w) ? 'move' : 'grab';
+    return tool === 'eraser' ? 'none' : 'crosshair';
+  }
+
+  stage.addEventListener('pointerdown', onDown);
+  stage.addEventListener('pointermove', onMove);
+  stage.addEventListener('pointerup', (e) => release(e, false));
+  stage.addEventListener('pointercancel', (e) => release(e, true));
+  stage.addEventListener('pointerleave', (e) => {
+    if (!pointers.has(e.pointerId) && hoverPt) { hoverPt = null; dirty(); }
+  });
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // Trackpad and mouse wheel: scroll to move, pinch (or Ctrl/⌘ + wheel) to zoom.
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    stopAnim();
+    if (e.ctrlKey || e.metaKey) {
+      const s = clamp(view.s * Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.01)), MIN_SCALE, MAX_SCALE);
+      const w = toWorld(e.clientX, e.clientY);
+      view.s = s; view.x = e.clientX - w.x * s; view.y = e.clientY - w.y * s;
+    } else {
+      const m = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1;
+      let dx = e.deltaX * m, dy = e.deltaY * m;
+      if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+      view.x -= dx; view.y -= dy;
+    }
+    viewChanged();
+  }, { passive: false });
+
+  // Safari trackpad pinch. Touch pinches are handled above, so these are ignored while fingers are down.
+  let gst = null;
+  document.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+    gst = pointers.size ? null : { s: view.s, w: toWorld(e.clientX, e.clientY) };
+  }, { passive: false });
+  document.addEventListener('gesturechange', (e) => {
+    e.preventDefault();
+    if (!gst || pointers.size) return;
+    const s = clamp(gst.s * e.scale, MIN_SCALE, MAX_SCALE);
+    view.s = s; view.x = e.clientX - gst.w.x * s; view.y = e.clientY - gst.w.y * s;
+    viewChanged();
+  }, { passive: false });
+  document.addEventListener('gestureend', (e) => { e.preventDefault(); gst = null; }, { passive: false });
+
+  // Keep the page itself still: no rubber-band scrolling, double-tap zoom or text selection.
+  document.addEventListener('touchmove', (e) => { if (e.target !== pasteZone) e.preventDefault(); }, { passive: false });
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+  document.addEventListener('selectstart', (e) => { if (!pasteZone.contains(e.target)) e.preventDefault(); });
+
+  /* ---------- History ---------- */
+  const BUSY = { erase: 1, move: 1, resize: 1, 'crop-handle': 1, 'crop-move': 1 };
+  function pushUndo(prev) {
+    undoStack.push(prev);
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack.length = 0;
+    updateUI();
+  }
+  function commit(next) { pushUndo(items); items = next; afterItemsChanged(); }
+  function afterItemsChanged() {
+    if (selectedId && !byId(selectedId)) selectedId = 0;
+    if (crop && !byId(crop.id)) crop = null;
+    dirty(true); updateUI();
+  }
+  function undo() {
+    if (gesture && BUSY[gesture.kind]) return;
+    if (crop) { finishCrop(false); return; }
+    if (!undoStack.length) return;
+    redoStack.push(items);
+    items = undoStack.pop();
+    afterItemsChanged();
+  }
+  function redo() {
+    if (gesture && BUSY[gesture.kind]) return;
+    if (crop) finishCrop(false);
+    if (!redoStack.length) return;
+    undoStack.push(items);
+    items = redoStack.pop();
+    afterItemsChanged();
+  }
+
+  /* ---------- Selection actions ---------- */
+  function setTool(t) {
+    if (crop) finishCrop(true);
+    if (t !== 'select') selectedId = 0;
+    tool = t;
+    stage.dataset.tool = t;
+    for (const b of toolBtns) b.setAttribute('aria-pressed', String(b.dataset.tool === t));
+    if (t !== 'eraser') hoverPt = null;
+    stage.style.cursor = '';
+    dirty(); updateUI();
+  }
+  function startCrop() {
+    const it = selected();
+    if (!it || it.type !== 'image') return;
+    const r = rectOf(it);
+    crop = { id: it.id, x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
+    dirty(true);
+  }
+  function resetCrop() {
+    if (!crop) return;
+    const it = byId(crop.id);
+    if (!it) return;
+    const f = fullRectOf(it);
+    crop.x0 = f.x; crop.y0 = f.y; crop.x1 = f.x + f.w; crop.y1 = f.y + f.h;
+    dirty();
+  }
+  function finishCrop(apply) {
+    if (!crop) return;
+    const c = crop;
+    crop = null;
+    const it = byId(c.id);
+    if (apply && it) {
+      const f = fullRectOf(it);
+      const cx = clamp(Math.round((c.x0 - f.x) / it.s), 0, it.nw - 1);
+      const cy = clamp(Math.round((c.y0 - f.y) / it.s), 0, it.nh - 1);
+      const cw = clamp(Math.round((c.x1 - c.x0) / it.s), 1, it.nw - cx);
+      const ch = clamp(Math.round((c.y1 - c.y0) / it.s), 1, it.nh - cy);
+      if (cx !== it.cx || cy !== it.cy || cw !== it.cw || ch !== it.ch) {
+        commit(replaceItem(items, Object.assign({}, it, { cx, cy, cw, ch, x: f.x + cx * it.s, y: f.y + cy * it.s })));
+      }
+    }
+    dirty(true);
+  }
+  function reorder(front) {
+    const it = selected();
+    if (!it) return;
+    const rest = items.filter((x) => x !== it);
+    const next = front ? rest.concat(it) : [it].concat(rest);
+    if (next.every((x, i) => x === items[i])) { toast(front ? 'It is already at the front.' : 'It is already at the back.'); return; }
+    commit(next);
+  }
+  function deleteSelected() {
+    const it = selected();
+    if (!it) return;
+    crop = null;
+    selectedId = 0;
+    commit(items.filter((x) => x !== it));
+  }
+
+  /* ---------- Zoom ---------- */
+  function stopAnim() { if (anim) { cancelAnimationFrame(anim); anim = 0; } }
+  function animateView(to) {
+    stopAnim();
+    if (reducedMotion.matches) { Object.assign(view, to); viewChanged(); return; }
+    const from = Object.assign({}, view), t0 = performance.now(), dur = 260;
+    const fx = (W / 2 - from.x) / from.s, fy = (H / 2 - from.y) / from.s;
+    const tx = (W / 2 - to.x) / to.s, ty = (H / 2 - to.y) / to.s;
+    const ls0 = Math.log(from.s), ls1 = Math.log(to.s);
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      const s = Math.exp(ls0 + (ls1 - ls0) * e);
+      view.s = s;
+      view.x = W / 2 - (fx + (tx - fx) * e) * s;
+      view.y = H / 2 - (fy + (ty - fy) * e) * s;
+      viewChanged();
+      anim = p < 1 ? requestAnimationFrame(step) : 0;
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function zoomAround(sx, sy, s) {
+    s = clamp(s, MIN_SCALE, MAX_SCALE);
+    const w = toWorld(sx, sy);
+    animateView({ s, x: sx - w.x * s, y: sy - w.y * s });
+  }
+  function zoomBy(f) { zoomAround(W / 2, H / 2, view.s * f); }
+  function zoomToFit() {
+    if (!items.length) { zoomAround(W / 2, H / 2, 1); return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const it of items) {
+      const r = rectOf(it);
+      x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y);
+      x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h);
+    }
+    const top = safe.t + 64, bottom = safe.b + 84, side = 24;
+    const aw = Math.max(40, W - safe.l - safe.r - side * 2), ah = Math.max(40, H - top - bottom);
+    const s = clamp(Math.min(aw / Math.max(1e-6, x1 - x0), ah / Math.max(1e-6, y1 - y0)), MIN_SCALE, 2);
+    animateView({ s, x: safe.l + side + aw / 2 - ((x0 + x1) / 2) * s, y: top + ah / 2 - ((y0 + y1) / 2) * s });
+  }
+  function updateZoomLabel() {
+    const t = Math.round(view.s * 100) + '%';
+    if (zoomLabel.textContent !== t) zoomLabel.textContent = t;
+  }
+
+  /* ---------- Paste, drop and photo picker ---------- */
+  const isImageFile = (f) => /^image\//i.test(f.type || '') || /\.(png|jpe?g|gif|webp|heic|heif|bmp|svg|tiff?)$/i.test(f.name || '');
+  function getData(dt, type) { try { return dt.getData(type) || ''; } catch (_) { return ''; } }
+  function dataUrlToBlob(u) {
+    const comma = u.indexOf(',');
+    const head = u.slice(0, comma), data = u.slice(comma + 1);
+    const mime = (head.match(/^data:([^;,]+)/) || [])[1] || 'image/png';
+    const bin = /;base64/i.test(head) ? atob(data) : decodeURIComponent(data);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+  // Must run inside the paste or drop event: the browser locks the data once the event ends.
+  function takeData(dt, at, isDrop) {
+    let files = Array.from(dt.files || []).filter(isImageFile);
+    if (!files.length && dt.items) {
+      for (const item of Array.from(dt.items)) {
+        if (item.kind !== 'file') continue;
+        const f = item.getAsFile();
+        if (f && isImageFile(f)) { files.push(f); if (!isDrop) break; }
+      }
+    }
+    if (files.length) { addImages(files, at); return; }
+    const html = getData(dt, 'text/html');
+    const m = html && html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+    if (m) {
+      try { addImages([dataUrlToBlob(m[1])], at); return; } catch (_) { /* fall back to text */ }
+    }
+    const text = getData(dt, 'text/plain');
+    if (text.trim()) { addText(text, at); return; }
+    toast(isDrop ? 'Drop a picture or some text.' : 'Nothing to paste. Copy a picture or some text first.');
+  }
+
+  function loadImage(blob) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => resolve({ img, url });
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read picture')); };
+      img.src = url;
+    });
+  }
+  async function prepareImage(blob) {
+    let { img, url } = await loadImage(blob);
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) { URL.revokeObjectURL(url); throw new Error('Picture has no size'); }
+    const k = Math.min(1, MAX_IMAGE_SIDE / Math.max(w, h));
+    if (k < 1) {
+      const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+      const cv = document.createElement('canvas');
+      cv.width = cw; cv.height = ch;
+      const c = cv.getContext('2d');
+      c.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in c) c.imageSmoothingQuality = 'high';
+      c.drawImage(img, 0, 0, cw, ch);
+      const type = /png|gif|webp|svg/i.test(blob.type || '') ? 'image/png' : 'image/jpeg';
+      const small = await new Promise((res) => { try { cv.toBlob(res, type, 0.92); } catch (_) { res(null); } });
+      cv.width = 0; cv.height = 0;           // hand the canvas memory back straight away
+      if (small) {
+        URL.revokeObjectURL(url);
+        ({ img, url } = await loadImage(small));
+        w = img.naturalWidth; h = img.naturalHeight;
+      }
+    }
+    urls.add(url);
+    return { img, w, h };
+  }
+  function freeSpot(sx, sy) {
+    for (let n = 0; n < 20; n++) {
+      const taken = items.some((it) => {
+        if (it.type === 'stroke') return false;
+        const r = screenRect(rectOf(it));
+        return Math.abs(r.x + r.w / 2 - sx) < 6 && Math.abs(r.y + r.h / 2 - sy) < 6;
+      });
+      if (!taken) break;
+      sx += 28; sy += 28;
+    }
+    return { x: sx, y: sy };
+  }
+  async function addImages(files, at) {
+    if (crop) finishCrop(true);
+    const ready = [];
+    let failed = 0;
+    for (const f of files.slice(0, 12)) {
+      try { ready.push(await prepareImage(f)); } catch (_) { failed++; }
+    }
+    if (!ready.length) { toast('That picture could not be opened. Copy it again, or choose it as a photo.'); return; }
+    const spot = freeSpot(at.x, at.y);
+    const added = ready.map((im, i) => {
+      const fit = Math.min(1, (W * 0.6) / im.w, (H * 0.55) / im.h);
+      const s = fit / view.s;
+      const c = toWorld(spot.x + i * 28, spot.y + i * 28);
+      return {
+        id: uid++, type: 'image', img: im.img, nw: im.w, nh: im.h,
+        cx: 0, cy: 0, cw: im.w, ch: im.h, s, x: c.x - (im.w * s) / 2, y: c.y - (im.h * s) / 2,
+      };
+    });
+    commit(items.concat(added));
+    selectedId = added[added.length - 1].id;
+    dirty();
+    if (failed) toast(failed + (failed > 1 ? ' pictures' : ' picture') + ' could not be opened.');
+  }
+
+  function wrapInto(lines, para, maxW) {
+    if (!para.trim()) { lines.push(''); return; }
+    let line = '';
+    for (let word of para.split(' ')) {
+      const test = line ? line + ' ' + word : word;
+      if (measure.measureText(test).width <= maxW) { line = test; continue; }
+      if (line) lines.push(line);
+      line = '';
+      while (word.length > 1 && measure.measureText(word).width > maxW) {
+        let i = 1;
+        while (i < word.length && measure.measureText(word.slice(0, i + 1)).width <= maxW) i++;
+        lines.push(word.slice(0, i));
+        word = word.slice(i);
+      }
+      line = word;
+    }
+    lines.push(line);
+  }
+  function addText(raw, at) {
+    if (crop) finishCrop(true);
+    let text = raw.replace(/\r\n?/g, '\n').replace(/\t/g, '    ').replace(/ /g, ' ');
+    text = text.replace(/^(?:[ ]*\n)+/, '').replace(/(?:\n[ ]*)+$/, '');
+    if (text.length > 8000) text = text.slice(0, 8000) + '…';
+    const fs = 20, lh = 27, pad = 6, maxW = Math.max(160, Math.min(560, W - 80));
+    measure.font = fs + 'px ' + FONT;
+    const lines = [];
+    for (const para of text.split('\n')) {
+      if (lines.length >= 400) break;
+      wrapInto(lines, para, maxW);
+    }
+    let tw = 0;
+    for (const l of lines) tw = Math.max(tw, measure.measureText(l).width);
+    const k = 1 / view.s, bw = Math.ceil(tw) + pad * 2, bh = lines.length * lh + pad * 2;
+    const spot = freeSpot(at.x, at.y), c = toWorld(spot.x, spot.y);
+    const it = { id: uid++, type: 'text', lines, fs, lh, pad, colour: penColour, bw, bh, k, x: c.x - (bw * k) / 2, y: c.y - (bh * k) / 2 };
+    commit(items.concat(it));
+    selectedId = it.id;
+    dirty();
+  }
+
+  let pasteKeyTimer = 0;
+  // Safari only fires paste outside a text field when beforepaste is cancelled.
+  document.addEventListener('beforepaste', (e) => { if (e.target !== pasteZone) e.preventDefault(); });
+  document.addEventListener('paste', (e) => {
+    clearTimeout(pasteKeyTimer);
+    e.preventDefault();
+    const dt = e.clipboardData;
+    closePopovers();
+    if (!dt) { toast('Paste is not available here. Tap Paste and choose a photo instead.'); return; }
+    takeData(dt, centre(), false);
+  });
+  pasteZone.addEventListener('input', () => { pasteZone.textContent = ''; });
+  window.addEventListener('dragover', (e) => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) takeData(e.dataTransfer, { x: e.clientX, y: e.clientY }, true);
+  });
+  fileInput.addEventListener('change', () => {
+    const files = Array.from(fileInput.files || []);
+    closePopovers();
+    if (files.length) addImages(files, centre());
+    fileInput.value = '';
+  });
+
+  // On its own website the app asks the system clipboard directly: iOS shows its own Paste button.
+  async function pasteFromClipboard() {
+    const list = await navigator.clipboard.read();
+    for (const item of list) {
+      const type = item.types.find((t) => /^image\//i.test(t));
+      if (type) { await addImages([await item.getType(type)], centre()); return true; }
+    }
+    for (const item of list) {
+      if (item.types.indexOf('text/plain') >= 0) {
+        const text = await (await item.getType('text/plain')).text();
+        if (text.trim()) { addText(text, centre()); return true; }
+      }
+    }
+    return false;
+  }
+  // Inside Claude the clipboard can't be read directly, so Paste opens a box the
+  // system paste menu can drop into. Touch and hold it, then tap Paste.
+  function openPasteSheet(viaKeyboard) {
+    if (crop) finishCrop(true);
+    openPop(pasteSheet);
+    const key = IS_APPLE ? '⌘V' : 'Ctrl+V';
+    if (viaKeyboard) { zoneMain.textContent = 'Press ' + key + ' again'; zoneSub.textContent = 'or touch and hold here, then tap Paste'; }
+    else if (COARSE) { zoneMain.textContent = 'Touch and hold here'; zoneSub.textContent = 'then tap Paste'; }
+    else { zoneMain.textContent = 'Press ' + key + ' to paste'; zoneSub.textContent = 'or right-click here and choose Paste'; }
+    pasteZone.textContent = '';
+    try { pasteZone.focus({ preventScroll: true }); } catch (_) { pasteZone.focus(); }
+  }
+
+  /* ---------- Popovers, toast and buttons ---------- */
+  function openPop(el) {
+    closePopovers(el);
+    el.hidden = false;
+    if (el === penPop) penBtn.setAttribute('aria-expanded', 'true');
+    if (el === zoomMenu) zoomLabel.setAttribute('aria-expanded', 'true');
+    if (el === pasteSheet) pasteBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closePopovers(except) {
+    for (const el of [penPop, pasteSheet, zoomMenu]) {
+      if (el === except || el.hidden) continue;
+      el.hidden = true;
+      if (el === penPop) penBtn.setAttribute('aria-expanded', 'false');
+      if (el === zoomMenu) zoomLabel.setAttribute('aria-expanded', 'false');
+      if (el === pasteSheet) {
+        pasteBtn.setAttribute('aria-expanded', 'false');
+        if (document.activeElement === pasteZone) pasteZone.blur();
+      }
+    }
+  }
+  let toastTimer = 0;
+  function toast(msg, action) {
+    toastMsg.textContent = msg;
+    if (action) {
+      toastAction.textContent = action.label;
+      toastAction.hidden = false;
+      toastAction.onclick = () => { hideToast(); action.run(); };
+    } else {
+      toastAction.hidden = true;
+      toastAction.onclick = null;
+    }
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, action ? 5000 : 3000);
+  }
+  function hideToast() { toastEl.classList.remove('show'); }
+
+  function noticePencil() {
+    pencilSeen = true;
+    fingerDraws = false;
+    updatePenUI();
+    toast('Apple Pencil found. Draw with the Pencil, move with your finger.', { label: 'Change', run: () => openPop(penPop) });
+  }
+
+  function buildPenPop() {
+    const sw = $('swatches'), sz = $('sizes');
+    for (const [name, value] of COLOURS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch'; b.title = name; b.dataset.value = value;
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-label', name);
+      b.style.setProperty('--c', value);
+      b.addEventListener('click', () => { penColour = value; updatePenUI(); });
+      sw.appendChild(b);
+    }
+    for (const [name, value] of SIZES) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'size'; b.title = name; b.dataset.value = String(value);
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-label', name);
+      const dot = document.createElement('i');
+      const d = Math.round(value * 1.6 + 2) + 'px';
+      dot.style.width = d; dot.style.height = d;
+      b.appendChild(dot);
+      b.addEventListener('click', () => { penSize = value; updatePenUI(); });
+      sz.appendChild(b);
+    }
+    fingerToggle.addEventListener('change', () => { fingerDraws = fingerToggle.checked; });
+  }
+  function updatePenUI() {
+    document.documentElement.style.setProperty('--pen', penColour);
+    for (const b of $('swatches').children) b.setAttribute('aria-checked', String(b.dataset.value === penColour));
+    for (const b of $('sizes').children) b.setAttribute('aria-checked', String(Number(b.dataset.value) === penSize));
+    fingerRow.hidden = !pencilSeen;
+    fingerToggle.checked = fingerDraws;
+  }
+  function updateUI() {
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+    hintEl.classList.toggle('gone', items.length > 0 || (gesture !== null && gesture.kind === 'draw'));
+    zoomFit.disabled = items.length === 0;
+  }
+
+  for (const b of toolBtns) {
+    b.addEventListener('click', () => {
+      if (b.dataset.tool === 'pen' && tool === 'pen') {
+        if (penPop.hidden) openPop(penPop); else closePopovers();
+        return;
+      }
+      closePopovers();
+      setTool(b.dataset.tool);
+    });
+  }
+  undoBtn.addEventListener('click', () => { closePopovers(); undo(); });
+  redoBtn.addEventListener('click', () => { closePopovers(); redo(); });
+  pasteBtn.addEventListener('click', () => {
+    if (!pasteSheet.hidden) { closePopovers(); return; }
+    if (FRAMED || !navigator.clipboard || typeof navigator.clipboard.read !== 'function') { openPasteSheet(false); return; }
+    closePopovers();
+    if (crop) finishCrop(true);
+    let job;
+    try { job = pasteFromClipboard(); } catch (err) { job = Promise.reject(err); }
+    job.then((ok) => { if (!ok) toast('Nothing to paste. Copy a picture or some text first.'); })
+      .catch(() => openPasteSheet(false));       // permission refused or Paste dismissed: offer the paste box
+  });
+  $('pasteClose').addEventListener('click', () => closePopovers());
+  $('clearBtn').addEventListener('click', () => {
+    closePopovers();
+    if (!items.length) { toast('The board is already empty.'); return; }
+    crop = null;
+    selectedId = 0;
+    commit([]);
+    toast('Board cleared.', { label: 'Undo', run: undo });
+  });
+  $('zoomIn').addEventListener('click', () => { closePopovers(); zoomBy(1.25); });
+  $('zoomOut').addEventListener('click', () => { closePopovers(); zoomBy(0.8); });
+  zoomLabel.addEventListener('click', () => { if (zoomMenu.hidden) openPop(zoomMenu); else closePopovers(); });
+  zoomFit.addEventListener('click', () => { closePopovers(); zoomToFit(); });
+  $('zoomReset').addEventListener('click', () => { closePopovers(); zoomAround(W / 2, H / 2, 1); });
+  ctxEl.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'crop') startCrop();
+    else if (act === 'front') reorder(true);
+    else if (act === 'back') reorder(false);
+    else if (act === 'delete') deleteSelected();
+    else if (act === 'crop-reset') resetCrop();
+    else if (act === 'crop-cancel') finishCrop(false);
+    else if (act === 'crop-done') finishCrop(true);
+  });
+
+  /* ---------- Keyboard (iPad keyboards, Mac and PC) ---------- */
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (crop) finishCrop(false);
+      else if (!penPop.hidden || !pasteSheet.hidden || !zoomMenu.hidden) closePopovers();
+      else if (selectedId) { selectedId = 0; dirty(); }
+      return;
+    }
+    if (e.target === pasteZone) return;     // let the system paste into the box
+    const mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
+    if (mod && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
+    if (mod && k === 'y') { e.preventDefault(); redo(); return; }
+    if (mod && k === 'v') {
+      // iPad keyboards only paste into a text box, so open the paste box straight away there.
+      if (IS_IOS) { openPasteSheet(true); return; }
+      clearTimeout(pasteKeyTimer);
+      pasteKeyTimer = setTimeout(() => openPasteSheet(true), 400);
+      return;
+    }
+    if (mod && (k === '=' || k === '+')) { e.preventDefault(); zoomBy(1.25); return; }
+    if (mod && k === '-') { e.preventDefault(); zoomBy(0.8); return; }
+    if (mod && k === '0') { e.preventDefault(); zoomAround(W / 2, H / 2, 1); return; }
+    if (mod || e.altKey) return;
+    if (e.target && e.target.closest && e.target.closest('input, textarea, select')) return;
+    if (k === 'v') setTool('select');
+    else if (k === 'p') setTool('pen');
+    else if (k === 'e') setTool('eraser');
+    else if (k === 'enter' && crop) { e.preventDefault(); finishCrop(true); }
+    else if ((k === 'backspace' || k === 'delete') && selectedId && !crop) { e.preventDefault(); deleteSelected(); }
+  });
+
+  /* ---------- Leaving the page wipes everything ---------- */
+  window.addEventListener('pagehide', () => {
+    items = [];
+    undoStack.length = 0;
+    redoStack.length = 0;
+    selectedId = 0; crop = null; gesture = null;
+    pointers.clear(); ignored.clear();
+    for (const u of urls) URL.revokeObjectURL(u);
+    urls.clear();
+    closePopovers();
+    renderBoard(); renderOverlay(); updateUI();
+  });
+
+  /* ---------- Start ---------- */
+  buildPenPop();
+  resize();
+  setTool('pen');
+  updatePenUI();
+  updateUI();
+  updateZoomLabel();
+  if ('ResizeObserver' in window) new ResizeObserver(() => resize()).observe(stage);
+  window.addEventListener('resize', resize);
+
+  /* ---------- Offline: on its own website the app keeps a copy of its own files, never your board ---------- */
+  if (!FRAMED && 'serviceWorker' in navigator && window.isSecureContext && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* no offline copy on this host */ });
+    });
+  }
+  /* test-hook */
+})();
+</script>
+</body>
+</html>
