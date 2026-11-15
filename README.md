@@ -1,6 +1,6 @@
 # Scratch Whiteboard
 
-A borderless whiteboard for iPhone and iPad. Draw, paste pictures and text or add photos from your library, then move, resize, rotate, flop (mirror left to right) and crop them. Nothing is saved. Once installed, it works offline.
+A borderless whiteboard for iPhone and iPad. Draw, paste pictures and text or add photos from your library, then move, resize, rotate, flop (mirror left to right) and crop them. Cut out part of a photo to layer it in front of or behind your drawings. Nothing is saved. Once installed, it works offline.
 
 ## Open it
 

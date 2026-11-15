@@ -148,7 +148,9 @@ svg { display: block; }
 .ctx button:active { background: #3a3a3c; }
 .ctx .danger { color: var(--danger); }
 .ctx .strong { color: #64b5ff; font-weight: 700; }
-.ctx[data-mode="crop"] .ctx-edit, .ctx:not([data-mode="crop"]) .ctx-crop, .ctx[data-mode="text"] .img-only { display: none; }
+.ctx[data-mode="crop"] .ctx-edit, .ctx[data-mode="lasso"] .ctx-edit, .ctx:not([data-mode="crop"]) .ctx-crop,
+.ctx:not([data-mode="lasso"]) .ctx-lasso, .ctx[data-mode="text"] .img-only { display: none; }
+.ctx-note { display: flex; align-items: center; height: 40px; padding: 0 14px; background: var(--menu); color: rgba(255, 255, 255, .85); font-size: 15px; white-space: nowrap; }
 .ctx .nav { width: 40px; padding: 0; display: none; place-items: center; }
 .ctx .nav svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 /* On phones the menu has two pages, like the iOS edit menu: main actions first, arrange actions behind the arrow. */
@@ -270,6 +272,7 @@ svg { display: block; }
     <button type="button" class="p1 img-only" data-act="crop">Crop</button>
     <button type="button" class="p1" data-act="rotate" title="Rotate a quarter turn clockwise">Rotate</button>
     <button type="button" class="p1 img-only" data-act="flop" title="Flop: mirror the picture left to right">Flop</button>
+    <button type="button" class="p2 img-only" data-act="cutout" title="Draw around part of the picture to make it a separate piece">Cut out</button>
     <button type="button" class="p2" data-act="front" title="Bring to front">To front</button>
     <button type="button" class="p2" data-act="back" title="Send to back">To back</button>
     <button type="button" class="p1 danger" data-act="delete">Delete</button>
@@ -279,6 +282,10 @@ svg { display: block; }
     <button type="button" data-act="crop-reset">Reset</button>
     <button type="button" data-act="crop-cancel">Cancel</button>
     <button type="button" class="strong" data-act="crop-done">Done</button>
+  </div>
+  <div class="ctx-group ctx-lasso">
+    <span class="ctx-note">Draw around the part to cut out</span>
+    <button type="button" data-act="lasso-cancel">Cancel</button>
   </div>
 </div>
 
@@ -338,6 +345,7 @@ svg { display: block; }
   const undoStack = [], redoStack = [];
   let tool = 'pen', penColour = COLOURS[0][1], penSize = SIZES[1][1];
   let selectedId = 0, crop = null;         // crop: { id, x0, y0, x1, y1 } in world units while cropping
+  let lasso = null;                        // { id } while drawing round part of a picture to cut it out
   let pencilSeen = false, fingerDraws = true;
   let uid = 1, gesture = null, hoverPt = null;
   const pointers = new Map(), ignored = new Set();
@@ -374,7 +382,36 @@ svg { display: block; }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   }
   const boundsOf = (it) => (it.type === 'stroke' || !rotOf(it) ? rectOf(it) : boundsOfPts(cornersOf(it)));
-  const insideItem = (it, w) => inRect(rectOf(it), rotPt(w, centreOf(it), -rotOf(it)));
+  // Between a picture's own pixels (u, v) and board points, allowing for its position, size, angle and flop.
+  function sourceToWorld(it, u, v) {
+    const c = centreOf(it);
+    let x = it.x + (u - it.cx) * it.s;
+    if (it.flip) x = 2 * c.x - x;
+    return rotPt({ x, y: it.y + (v - it.cy) * it.s }, c, rotOf(it));
+  }
+  function worldToSource(it, w) {
+    const c = centreOf(it), p = rotPt(w, c, -rotOf(it));
+    const x = it.flip ? 2 * c.x - p.x : p.x;
+    return { u: it.cx + (x - it.x) / it.s, v: it.cy + (p.y - it.y) / it.s };
+  }
+  // Even-odd point-in-polygon test; poly is a flat [x0, y0, x1, y1, ...] list.
+  function inPolygon(poly, u, v) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
+      const xi = poly[i], yi = poly[i + 1], xj = poly[j], yj = poly[j + 1];
+      if ((yi > v) !== (yj > v) && u < ((xj - xi) * (v - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  // A tap counts only on the visible part: a cut-out piece by its own outline, never inside a hole.
+  function insideItem(it, w) {
+    if (!inRect(rectOf(it), rotPt(w, centreOf(it), -rotOf(it)))) return false;
+    if (!it.shape && !it.holes) return true;
+    const p = worldToSource(it, w);
+    if (it.shape && !inPolygon(it.shape, p.u, p.v)) return false;
+    if (it.holes) for (const h of it.holes) if (inPolygon(h, p.u, p.v)) return false;
+    return true;
+  }
   function normAngle(a) {
     a %= Math.PI * 2;
     if (a > Math.PI) a -= Math.PI * 2;
@@ -486,8 +523,24 @@ svg { display: block; }
     c.strokeStyle = it.colour; c.lineWidth = it.w; c.stroke(strokePath(it));
   }
   function drawPicture(c, it, full) {
+    const holes = it.holes && it.holes.length;
+    if (holes) {
+      // Each part cut out of this picture leaves a hole. Clipping once per hole keeps overlapping holes empty.
+      c.save();
+      for (const h of it.holes) {
+        c.beginPath();
+        c.rect(it.x - it.cx * it.s, it.y - it.cy * it.s, it.nw * it.s, it.nh * it.s);
+        for (let i = 0; i < h.length; i += 2) {
+          const x = it.x + (h[i] - it.cx) * it.s, y = it.y + (h[i + 1] - it.cy) * it.s;
+          if (i) c.lineTo(x, y); else c.moveTo(x, y);
+        }
+        c.closePath();
+        c.clip('evenodd');
+      }
+    }
     if (full) c.drawImage(it.img, it.x - it.cx * it.s, it.y - it.cy * it.s, it.nw * it.s, it.nh * it.s);
     else c.drawImage(it.img, it.cx, it.cy, it.cw, it.ch, it.x, it.y, it.cw * it.s, it.ch * it.s);
+    if (holes) c.restore();
   }
   function drawText(c, it) {
     c.save();
@@ -514,6 +567,7 @@ svg { display: block; }
     if (crop) drawCropFrame(c);
     else { const sel = selected(); if (sel) drawSelection(c, sel); }
     if (hoverPt) drawEraserRing(c, hoverPt);
+    if (g && g.kind === 'lasso') drawLasso(c, g.pts);
     placeCtx();
   }
   function drawLive(c, g) {
@@ -576,7 +630,8 @@ svg { display: block; }
     c.beginPath();
     pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
     c.closePath(); c.stroke();
-    if (gesture && gesture.kind === 'move' && gesture.moved) return;
+    drawCutLines(c, it);
+    if (lasso || (gesture && gesture.kind === 'move' && gesture.moved)) return;
     const top = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, knob = rotateHandleOf(it);
     c.beginPath(); c.moveTo(top.x, top.y); c.lineTo(knob.x, knob.y);
     c.lineWidth = 1.5; c.strokeStyle = ACCENT; c.stroke();
@@ -621,6 +676,33 @@ svg { display: block; }
     c.restore();
     c.restore();
   }
+  // The loop being drawn round part of a picture: dashed, with a light fill.
+  function drawLasso(c, pts) {
+    if (pts.length < 2) return;
+    c.save();
+    c.beginPath();
+    pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+    c.closePath();
+    c.fillStyle = 'rgba(0, 122, 255, 0.10)'; c.fill('evenodd');
+    c.setLineDash([6, 4]); c.lineWidth = 2; c.lineJoin = 'round'; c.strokeStyle = ACCENT; c.stroke();
+    c.restore();
+  }
+  // Dashed outlines where a picture has been cut, so you can see its parts when it's selected.
+  function drawCutLines(c, it) {
+    const polys = (it.shape ? [it.shape] : []).concat(it.holes || []);
+    if (!polys.length) return;
+    c.save();
+    c.setLineDash([5, 4]); c.lineWidth = 1.25; c.strokeStyle = ACCENT;
+    for (const poly of polys) {
+      c.beginPath();
+      for (let i = 0; i < poly.length; i += 2) {
+        const p = toScreenPt(sourceToWorld(it, poly[i], poly[i + 1]));
+        if (i) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y);
+      }
+      c.closePath(); c.stroke();
+    }
+    c.restore();
+  }
   function drawEraserRing(c, p) {
     c.beginPath(); c.arc(p.x, p.y, ERASER_RADIUS, 0, Math.PI * 2);
     c.fillStyle = 'rgba(255, 255, 255, 0.45)'; c.fill();
@@ -630,7 +712,7 @@ svg { display: block; }
   /* The dark menu that follows the selected picture */
   function placeCtx() {
     const sel = selected();
-    const busy = gesture && (gesture.kind === 'move' || gesture.kind === 'resize' || gesture.kind === 'rotate' || gesture.kind === 'crop-handle' || gesture.kind === 'crop-move');
+    const busy = gesture && (gesture.kind === 'move' || gesture.kind === 'resize' || gesture.kind === 'rotate' || gesture.kind === 'lasso' || gesture.kind === 'crop-handle' || gesture.kind === 'crop-move');
     let r = null;
     if (sel && !busy) {
       const cit = crop ? byId(crop.id) : null;
@@ -646,7 +728,7 @@ svg { display: block; }
       if (r.x > W || r.y > H || r.x + r.w < 0 || r.y + r.h < 0) r = null;
     }
     if (!r) { if (!ctxEl.hidden) ctxEl.hidden = true; return; }
-    const mode = crop ? 'crop' : sel.type;
+    const mode = crop ? 'crop' : lasso ? 'lasso' : sel.type;
     if (ctxEl.dataset.mode !== mode) ctxEl.dataset.mode = mode;
     if (ctxEl.dataset.for !== String(sel.id)) { ctxEl.dataset.for = String(sel.id); ctxEl.dataset.page = '1'; }
     if (ctxEl.hidden) ctxEl.hidden = false;
@@ -857,6 +939,11 @@ svg { display: block; }
     const w = toWorld(p.x, p.y);
     const touch = p.type === 'touch', pen = p.type === 'pen';
     const use = touch && !fingerDraws ? 'select' : tool;
+    if (lasso) {   // choosing a part to cut out: any one-finger or Pencil drag draws the loop
+      gesture = { kind: 'lasso', id: p.id, touch, pts: [{ x: p.x, y: p.y }], len: 0 };
+      dirty();
+      return;
+    }
     if (crop) {
       const h = hitCropHandle(p.x, p.y), lw = cropLocal(w);
       if (h) { gesture = { kind: 'crop-handle', id: p.id, touch, h, start: Object.assign({}, crop), p0: lw }; dirty(); return; }
@@ -975,8 +1062,9 @@ svg { display: block; }
     if (!p) { hover(e); return; }
     e.preventDefault();
     const g = gesture;
-    if (g && g.id === p.id && (g.kind === 'draw' || g.kind === 'erase')) {
+    if (g && g.id === p.id && (g.kind === 'draw' || g.kind === 'erase' || g.kind === 'lasso')) {
       for (const ev of coalesced(e)) {
+        if (g.kind === 'lasso') { lassoAdd(g, ev.clientX, ev.clientY); continue; }
         const w = toWorld(ev.clientX, ev.clientY);
         if (g.kind === 'draw') drawAdd(g, w.x, w.y);
         else { eraseSeg(g, g.last, w); g.last = w; }
@@ -1083,6 +1171,8 @@ svg { display: block; }
       if (!cancelled || g.pen || g.len > 12) commitStroke(g);
     } else if (g.kind === 'erase' || g.kind === 'move' || g.kind === 'resize' || g.kind === 'rotate') {
       if (g.changed) pushUndo(g.before);
+    } else if (g.kind === 'lasso') {
+      if (!cancelled) finishLasso(g);
     } else if (g.kind === 'pan') {
       if (cancelled && g.touch) { Object.assign(view, g.view0); viewChanged(); }
       else if (tap && g.tapFinishesCrop && crop) finishCrop(true);
@@ -1107,6 +1197,7 @@ svg { display: block; }
     return ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'][Math.round(t / (Math.PI / 4)) % 4];
   }
   function cursorAt(sx, sy) {
+    if (lasso) return 'crosshair';
     const w = toWorld(sx, sy);
     if (crop) {
       const it = byId(crop.id), h = hitCropHandle(sx, sy), lw = cropLocal(w);
@@ -1171,7 +1262,7 @@ svg { display: block; }
   document.addEventListener('selectstart', (e) => { if (!pasteZone.contains(e.target)) e.preventDefault(); });
 
   /* ---------- History ---------- */
-  const BUSY = { erase: 1, move: 1, resize: 1, rotate: 1, 'crop-handle': 1, 'crop-move': 1 };
+  const BUSY = { erase: 1, move: 1, resize: 1, rotate: 1, lasso: 1, 'crop-handle': 1, 'crop-move': 1 };
   function pushUndo(prev) {
     undoStack.push(prev);
     if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
@@ -1182,10 +1273,12 @@ svg { display: block; }
   function afterItemsChanged() {
     if (selectedId && !byId(selectedId)) selectedId = 0;
     if (crop && !byId(crop.id)) crop = null;
+    if (lasso && !byId(lasso.id)) lasso = null;
     dirty(true); updateUI();
   }
   function undo() {
     if (gesture && BUSY[gesture.kind]) return;
+    if (lasso) { lasso = null; dirty(); return; }   // first undo press just leaves cut-out mode
     if (crop) { finishCrop(false); return; }
     if (!undoStack.length) return;
     redoStack.push(items);
@@ -1195,6 +1288,7 @@ svg { display: block; }
   function redo() {
     if (gesture && BUSY[gesture.kind]) return;
     if (crop) finishCrop(false);
+    lasso = null;
     if (!redoStack.length) return;
     undoStack.push(items);
     items = redoStack.pop();
@@ -1204,6 +1298,7 @@ svg { display: block; }
   /* ---------- Selection actions ---------- */
   function setTool(t) {
     if (crop) finishCrop(true);
+    lasso = null;
     if (t !== 'select') selectedId = 0;
     tool = t;
     stage.dataset.tool = t;
@@ -1249,6 +1344,97 @@ svg { display: block; }
     }
     dirty(true);
   }
+  /* ---------- Cut out: make part of a picture its own piece, so each part can be layered separately ---------- */
+  function startLasso() {
+    if (crop) finishCrop(true);
+    const it = selected();
+    if (!it || it.type !== 'image') return;
+    lasso = { id: it.id };
+    dirty();
+  }
+  function lassoAdd(g, x, y) {
+    const last = g.pts[g.pts.length - 1], d = Math.hypot(x - last.x, y - last.y);
+    if (d < 1.5) return;
+    g.len += d;
+    g.pts.push({ x, y });
+  }
+  function loopArea(pts) {
+    let a = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j].x + pts[i].x) * (pts[j].y - pts[i].y);
+    return Math.abs(a / 2);
+  }
+  function finishLasso(g) {
+    if (g.len < 8) { lasso = null; dirty(); return; }      // a tap leaves cut-out mode
+    if (g.pts.length < 3 || loopArea(g.pts) < 400) { toast('Draw a loop around the part you want to cut out.'); return; }
+    cutOut(g.pts);
+  }
+  async function cutOut(screenPts) {
+    const it = lasso && byId(lasso.id);
+    lasso = null;
+    dirty();
+    if (!it || it.type !== 'image') return;
+    // The loop in the picture's own pixels, kept inside the part you can see.
+    let poly = [], lu = NaN, lv = NaN;
+    for (const p of screenPts) {
+      const q = worldToSource(it, toWorld(p.x, p.y));
+      const u = clamp(q.u, it.cx, it.cx + it.cw), v = clamp(q.v, it.cy, it.cy + it.ch);
+      if (Math.hypot(u - lu, v - lv) < 1.5) continue;
+      poly.push(u, v); lu = u; lv = v;
+    }
+    if (poly.length > 1200) { const k = Math.ceil(poly.length / 1200); poly = poly.filter((_, i) => (i >> 1) % k === 0); }
+    if (poly.length < 6) { toast('Draw a loop around the part you want to cut out.'); return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < poly.length; i += 2) {
+      x0 = Math.min(x0, poly[i]); x1 = Math.max(x1, poly[i]);
+      y0 = Math.min(y0, poly[i + 1]); y1 = Math.max(y1, poly[i + 1]);
+    }
+    // The piece is 2 picture pixels bigger than the hole, so no seam shows where they meet.
+    const grow = 2;
+    x0 = Math.max(0, Math.floor(x0 - grow)); y0 = Math.max(0, Math.floor(y0 - grow));
+    x1 = Math.min(it.nw, Math.ceil(x1 + grow)); y1 = Math.min(it.nh, Math.ceil(y1 + grow));
+    const bw = x1 - x0, bh = y1 - y0;
+    if (bw < 2 || bh < 2) { toast('Draw a loop around the part you want to cut out.'); return; }
+    const local = (list) => {
+      const path = new Path2D();
+      for (let i = 0; i < list.length; i += 2) { if (i) path.lineTo(list[i] - x0, list[i + 1] - y0); else path.moveTo(list[i] - x0, list[i + 1] - y0); }
+      path.closePath();
+      return path;
+    };
+    const cv = document.createElement('canvas');
+    cv.width = bw; cv.height = bh;
+    const g = cv.getContext('2d');
+    const loop = local(poly);
+    g.fillStyle = '#000'; g.fill(loop, 'evenodd');
+    g.lineWidth = grow * 2; g.lineJoin = 'round'; g.strokeStyle = '#000'; g.stroke(loop);
+    g.globalCompositeOperation = 'source-in';
+    g.drawImage(it.img, x0, y0, bw, bh, 0, 0, bw, bh);
+    if (it.holes) {                       // parts already cut away stay out of the new piece
+      g.globalCompositeOperation = 'destination-out';
+      for (const h of it.holes) g.fill(local(h), 'evenodd');
+    }
+    let img = cv;
+    try {
+      if (typeof createImageBitmap === 'function') { img = await createImageBitmap(cv); cv.width = 0; cv.height = 0; }
+    } catch (_) { img = cv; }
+    const at = items.indexOf(it);
+    if (at < 0) return;                    // the board changed meanwhile, so leave it alone
+    const mid = sourceToWorld(it, x0 + bw / 2, y0 + bh / 2);
+    const piece = {
+      id: uid++, type: 'image', img, nw: bw, nh: bh, cx: 0, cy: 0, cw: bw, ch: bh, s: it.s,
+      rot: rotOf(it), flip: !!it.flip, shape: poly.map((n, i) => (i % 2 ? n - y0 : n - x0)),
+      x: mid.x - (bw * it.s) / 2, y: mid.y - (bh * it.s) / 2,
+    };
+    const next = items.slice();
+    next[at] = Object.assign({}, it, { holes: (it.holes || []).concat([poly]) });
+    next.splice(at + 1, 0, piece);
+    commit(next);
+    selectedId = piece.id;
+    ctxEl.dataset.for = String(piece.id);
+    ctxEl.dataset.page = '2';              // on phones, open the menu where To front and To back are
+    dirty(true);
+    toast('Cut out. Use To front or To back to layer each part.', { label: 'Undo', run: undo });
+  }
+
   // Flop: mirror the picture across the vertical line through its centre, as you see it on screen.
   // A turned picture's angle reverses, the same as a reflection in an upright mirror.
   function flopSelected() {
@@ -1275,6 +1461,7 @@ svg { display: block; }
     const it = selected();
     if (!it) return;
     crop = null;
+    lasso = null;
     selectedId = 0;
     commit(items.filter((x) => x !== it));
   }
@@ -1405,6 +1592,7 @@ svg { display: block; }
   }
   async function addImages(files, at) {
     if (crop) finishCrop(true);
+    lasso = null;
     const ready = [];
     let failed = 0;
     for (const f of files.slice(0, 12)) {
@@ -1447,6 +1635,7 @@ svg { display: block; }
   }
   function addText(raw, at) {
     if (crop) finishCrop(true);
+    lasso = null;
     let text = raw.replace(/\r\n?/g, '\n').replace(/\t/g, '    ').replace(/ /g, ' ');
     text = text.replace(/^(?:[ ]*\n)+/, '').replace(/(?:\n[ ]*)+$/, '');
     if (text.length > 8000) text = text.slice(0, 8000) + '…';
@@ -1636,6 +1825,7 @@ svg { display: block; }
     closePopovers();
     if (!items.length) { toast('The board is already empty.'); return; }
     crop = null;
+    lasso = null;
     selectedId = 0;
     commit([]);
     toast('Board cleared.', { label: 'Undo', run: undo });
@@ -1652,6 +1842,8 @@ svg { display: block; }
     if (act === 'crop') startCrop();
     else if (act === 'rotate') rotateSelected(Math.PI / 2);
     else if (act === 'flop') flopSelected();
+    else if (act === 'cutout') startLasso();
+    else if (act === 'lasso-cancel') { lasso = null; dirty(); }
     else if (act === 'more' || act === 'less') { ctxEl.dataset.page = act === 'more' ? '2' : '1'; dirty(); }
     else if (act === 'front') reorder(true);
     else if (act === 'back') reorder(false);
@@ -1664,7 +1856,8 @@ svg { display: block; }
   /* ---------- Keyboard (iPad keyboards, Mac and PC) ---------- */
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (crop) finishCrop(false);
+      if (lasso) { lasso = null; dirty(); }
+      else if (crop) finishCrop(false);
       else if (!penPop.hidden || !pasteSheet.hidden || !zoomMenu.hidden) closePopovers();
       else if (selectedId) { selectedId = 0; dirty(); }
       return;
@@ -1699,7 +1892,7 @@ svg { display: block; }
     items = [];
     undoStack.length = 0;
     redoStack.length = 0;
-    selectedId = 0; crop = null; gesture = null;
+    selectedId = 0; crop = null; lasso = null; gesture = null;
     pointers.clear(); ignored.clear();
     for (const u of urls) URL.revokeObjectURL(u);
     urls.clear();
