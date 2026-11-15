@@ -149,11 +149,12 @@ svg { display: block; }
 .ctx .danger { color: var(--danger); }
 .ctx .strong { color: #64b5ff; font-weight: 700; }
 .ctx[data-mode="crop"] .ctx-edit, .ctx:not([data-mode="crop"]) .ctx-crop, .ctx[data-mode="text"] .img-only { display: none; }
-.ctx .short { display: none; }
-@media (max-width: 419px) {
-  .ctx button { padding: 0 12px; }
-  .ctx .long { display: none; }
-  .ctx .short { display: inline; }
+.ctx .nav { width: 40px; padding: 0; display: none; place-items: center; }
+.ctx .nav svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* On phones the menu has two pages, like the iOS edit menu: main actions first, arrange actions behind the arrow. */
+@media (max-width: 599px) {
+  .ctx:not([data-page="2"]) .p2, .ctx[data-page="2"] .p1 { display: none; }
+  .ctx:not([data-page="2"]) .more, .ctx[data-page="2"] .less { display: grid; }
 }
 
 #toast {
@@ -265,11 +266,14 @@ svg { display: block; }
 
 <div id="ctx" class="ctx" role="toolbar" aria-label="Selected item" hidden>
   <div class="ctx-group ctx-edit">
-    <button type="button" class="img-only" data-act="crop">Crop</button>
-    <button type="button" data-act="rotate" title="Rotate a quarter turn clockwise">Rotate</button>
-    <button type="button" data-act="front" title="Bring to front"><span class="long">To front</span><span class="short">Front</span></button>
-    <button type="button" data-act="back" title="Send to back"><span class="long">To back</span><span class="short">Back</span></button>
-    <button type="button" class="danger" data-act="delete">Delete</button>
+    <button type="button" class="nav less" data-act="less" aria-label="Back to the main options"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button type="button" class="p1 img-only" data-act="crop">Crop</button>
+    <button type="button" class="p1" data-act="rotate" title="Rotate a quarter turn clockwise">Rotate</button>
+    <button type="button" class="p1 img-only" data-act="flop" title="Flop: mirror the picture left to right">Flop</button>
+    <button type="button" class="p2" data-act="front" title="Bring to front">To front</button>
+    <button type="button" class="p2" data-act="back" title="Send to back">To back</button>
+    <button type="button" class="p1 danger" data-act="delete">Delete</button>
+    <button type="button" class="nav more" data-act="more" aria-label="More options"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
   </div>
   <div class="ctx-group ctx-crop">
     <button type="button" data-act="crop-reset">Reset</button>
@@ -390,8 +394,11 @@ svg { display: block; }
     const b = it.bbox;
     return { x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1] };
   }
+  // The whole picture as shown, before cropping. A flopped picture shows its pixels right to left,
+  // so the uncropped part to its right appears on the left.
   function fullRectOf(it) {
-    return { x: it.x - it.cx * it.s, y: it.y - it.cy * it.s, w: it.nw * it.s, h: it.nh * it.s };
+    const left = it.flip ? it.x - (it.nw - it.cx - it.cw) * it.s : it.x - it.cx * it.s;
+    return { x: left, y: it.y - it.cy * it.s, w: it.nw * it.s, h: it.nh * it.s };
   }
   function screenRect(r) {
     return { x: r.x * view.s + view.x, y: r.y * view.s + view.y, w: r.w * view.s, h: r.h * view.s };
@@ -449,11 +456,17 @@ svg { display: block; }
       const r = full ? boundsOfPts(turnedCorners(fullRectOf(it), centreOf(it), rotOf(it))) : boundsOf(it);
       if (r.x > vx1 || r.y > vy1 || r.x + r.w < vx0 || r.y + r.h < vy0) continue;
       if (it.type === 'stroke') { drawStroke(c, it); continue; }
-      const a = rotOf(it);
-      if (a) { const k = centreOf(it); c.save(); c.translate(k.x, k.y); c.rotate(a); c.translate(-k.x, -k.y); }
+      const a = rotOf(it), turned = a !== 0 || it.flip === true;
+      if (turned) {
+        const k = centreOf(it);
+        c.save(); c.translate(k.x, k.y);
+        if (a) c.rotate(a);
+        if (it.flip) c.scale(-1, 1);          // flop: mirror across the picture's own vertical centre line
+        c.translate(-k.x, -k.y);
+      }
       if (it.type === 'image') drawPicture(c, it, full);
       else drawText(c, it);
-      if (a) c.restore();
+      if (turned) c.restore();
     }
   }
 
@@ -635,6 +648,7 @@ svg { display: block; }
     if (!r) { if (!ctxEl.hidden) ctxEl.hidden = true; return; }
     const mode = crop ? 'crop' : sel.type;
     if (ctxEl.dataset.mode !== mode) ctxEl.dataset.mode = mode;
+    if (ctxEl.dataset.for !== String(sel.id)) { ctxEl.dataset.for = String(sel.id); ctxEl.dataset.page = '1'; }
     if (ctxEl.hidden) ctxEl.hidden = false;
     const cw = ctxEl.offsetWidth, ch = ctxEl.offsetHeight;
     const top = safe.t + 60, bottom = H - safe.b - 80;
@@ -1220,17 +1234,28 @@ svg { display: block; }
     const it = byId(c.id);
     if (apply && it) {
       const f = fullRectOf(it);
-      const cx = clamp(Math.round((c.x0 - f.x) / it.s), 0, it.nw - 1);
+      // Picture pixels run right to left on a flopped picture, so its left pixel edge is the window's right side.
+      const leftPx = it.flip ? it.nw - (c.x1 - f.x) / it.s : (c.x0 - f.x) / it.s;
+      const cx = clamp(Math.round(leftPx), 0, it.nw - 1);
       const cy = clamp(Math.round((c.y0 - f.y) / it.s), 0, it.nh - 1);
       const cw = clamp(Math.round((c.x1 - c.x0) / it.s), 1, it.nw - cx);
       const ch = clamp(Math.round((c.y1 - c.y0) / it.s), 1, it.nh - cy);
       if (cx !== it.cx || cy !== it.cy || cw !== it.cw || ch !== it.ch) {
         // Keep the part you kept exactly where it was, even when the picture is turned.
-        const mid = rotPt({ x: f.x + (cx + cw / 2) * it.s, y: f.y + (cy + ch / 2) * it.s }, centreOf(it), rotOf(it));
+        const left = it.flip ? f.x + (it.nw - cx - cw) * it.s : f.x + cx * it.s;
+        const mid = rotPt({ x: left + (cw * it.s) / 2, y: f.y + (cy + ch / 2) * it.s }, centreOf(it), rotOf(it));
         commit(replaceItem(items, Object.assign({}, it, { cx, cy, cw, ch, x: mid.x - (cw * it.s) / 2, y: mid.y - (ch * it.s) / 2 })));
       }
     }
     dirty(true);
+  }
+  // Flop: mirror the picture across the vertical line through its centre, as you see it on screen.
+  // A turned picture's angle reverses, the same as a reflection in an upright mirror.
+  function flopSelected() {
+    if (crop) finishCrop(true);
+    const it = selected();
+    if (!it || it.type !== 'image') return;
+    commit(replaceItem(items, Object.assign({}, it, { flip: !it.flip, rot: normAngle(-rotOf(it)) })));
   }
   function rotateSelected(delta) {
     if (crop) finishCrop(true);
@@ -1626,6 +1651,8 @@ svg { display: block; }
     const act = b.dataset.act;
     if (act === 'crop') startCrop();
     else if (act === 'rotate') rotateSelected(Math.PI / 2);
+    else if (act === 'flop') flopSelected();
+    else if (act === 'more' || act === 'less') { ctxEl.dataset.page = act === 'more' ? '2' : '1'; dirty(); }
     else if (act === 'front') reorder(true);
     else if (act === 'back') reorder(false);
     else if (act === 'delete') deleteSelected();
@@ -1662,6 +1689,7 @@ svg { display: block; }
     else if (k === 'p') setTool('pen');
     else if (k === 'e') setTool('eraser');
     else if (k === 'r' && selectedId) rotateSelected(e.shiftKey ? -Math.PI / 2 : Math.PI / 2);
+    else if (k === 'f' && selectedId) flopSelected();
     else if (k === 'enter' && crop) { e.preventDefault(); finishCrop(true); }
     else if ((k === 'backspace' || k === 'delete') && selectedId && !crop) { e.preventDefault(); deleteSelected(); }
   });
