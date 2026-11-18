@@ -8683,13 +8683,21 @@ function paintPaulPortrait(cv, mood) {
 /* ---------- the game: Poo Pong, with Paul ---------- */
 const PAUL_GOAL = 5, PAUL_LVLS = 8;
 const PAUL_COL = { p1: '#2f8cff', p2: '#ff8a1f', cpu: '#ff4f9a' };
-const PAUL_WIN = ['Another orange tsunami!', 'That\'s for the old Roy boys!', 'Billy Slater time!']; // what Paul says when things go his way...
-const PAUL_LOSE = ['I hate Cats!', 'Ohhh Jezza!', 'No more Toby time!']; // ...and when they don't
+const PAUL_WIN = [ // what Paul says when things go his way...
+  'Another orange tsunami!', 'That\'s for the old Roy boys!', 'Billy Slater time!', 'You boys will never beat me!', 'Don\'t they teach you anything at school?',
+  'Is that all you\'ve got?', 'This shiny head never loses!', 'Back to the training paddock!', 'Even Crusher plays better!', 'Go home and practise, boys!',
+  'Paul one, kids nil!', 'You\'ve just been Paul-ed!', 'Easy as, mate!', 'I\'m the Poo Pong king!', 'Should\'ve stayed in bed!'
+];
+const PAUL_LOSE = [ // ...and when they don't
+  'I hate Cats!', 'Ohhh Jezza!', 'No more Toby time!', 'I am going to dob you into your mum!', 'You\'re grounded for beating me!',
+  'No dessert for you tonight!', 'That\'s it, you\'re doing the dishes!', 'Wait till your father gets home!', 'No more screen time for you!', 'Pocket money cancelled!',
+  'I wasn\'t even trying!', 'The sun was in my eyes!', 'I let you win, you know!', 'Ref! That was a foul!', 'Straight to bed, no telly!'
+];
 const PAUL_LINES = {
   hello: ['Can you beat me?', 'Bring it on!', 'Righto, game on!', 'Here we go!'],
   score: ['Too easy!', 'Ha ha ha!', 'Paul wins that one!', 'You\'re dreaming!', 'Have another go!', 'Get in!', ...PAUL_WIN], // he wins a point
   miss: ['Oi!', 'Lucky shot!', 'Not fair!', 'Strewth!', 'How?!', 'Rematch!', ...PAUL_LOSE], // he loses a point
-  hit: ['Eww!', 'Yuck!', 'Gross!', 'Bonk!', 'Ewww, poo!', ...PAUL_WIN], // the poo bounces off his face
+  hit: ['Eww!', 'Yuck!', 'Gross!', 'Bonk!', 'Ewww, poo!'], // the poo bounces off his face (half the time he crows about it instead)
   win: PAUL_WIN, // he wins the game
   lose: PAUL_LOSE // he loses the game
 };
@@ -8820,7 +8828,7 @@ MINI_GAMES.paul = {
       SND.sfx('bonk');
       if (!b.smash) {
         S.mood = 'hit'; S.moodT = 0.45;
-        if (Math.random() < 0.3 && PAUL_WIN.includes(paulLine(S, PAUL_LINES.hit, 1.0))) { S.mood = 'cheeky'; S.moodT = 0.8; } // pleased with himself, not grossed out
+        if (Math.random() < 0.3 && PAUL_WIN.includes(paulLine(S, Math.random() < 0.5 ? PAUL_LINES.hit : PAUL_WIN, 1.0))) { S.mood = 'cheeky'; S.moodT = 0.8; } // pleased with himself, not grossed out
       }
     } else SND.sfx('kick');
     if (O.pl < 0) { // Paul on his own now and then gets it wrong, and the better he gets, the more he aims away from you
@@ -8916,7 +8924,7 @@ MINI_GAMES.paul = {
       if (!M.vert) { bx = m.x + (S.paul ? 0 : -S.dir * 40); by = m.y - (S.paul ? S.B + 14 : 74); }
       else if (S.i === 1) { bx = m.x + (m.x < M.w / 2 ? 1 : -1) * 120; by = m.y + 14; }
       else by = m.y - (S.paul ? S.A + 14 : 86);
-      bubble(c, bx, Math.max(36, by), S.say, true, S.paul);
+      paulBubble(c, bx, Math.max(36, by), S.say, S.paul);
     }
   },
   hud(c, t, M) {
@@ -8939,6 +8947,25 @@ MINI_GAMES.paul = {
     miniLabel(c, `First to ${M.goal} wins`, Bx.M.x + Bx.M.w / 2, y + 40, 16, INK, 'center', Bx.M.w - 12);
   }
 };
+function paulBubble(c, x, y, txt, adult) { // the game's speech bubble, but a long line goes over two
+  c.font = '600 15px Fredoka, sans-serif';
+  let lines = [txt];
+  if (c.measureText(txt).width > 232) { // break at the space that makes the two lines most even
+    const words = txt.split(' '); let best = null;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(' '), b = words.slice(i).join(' '), wd = Math.max(c.measureText(a).width, c.measureText(b).width);
+      if (!best || wd < best.wd) best = { a, b, wd };
+    }
+    if (best) lines = [best.a, best.b];
+  }
+  const w = Math.min(260, Math.max(...lines.map((l) => c.measureText(l).width)) + 22), h = 12 + lines.length * 18;
+  const bx = clamp(x - w / 2, G.cam.x + 6, G.cam.x + VIEW.w - w - 6), by = y - h, fill = adult ? '#ffe9e6' : '#fff';
+  c.beginPath(); c.moveTo(x - 7, by + h - 1); c.lineTo(x, by + h + 9); c.lineTo(x + 7, by + h - 1); c.closePath();
+  c.fillStyle = fill; c.fill(); c.strokeStyle = INK; c.lineWidth = 2.5; c.stroke();
+  rrect(c, bx, by, w, h, 12); blob(c, fill, 2.5);
+  c.fillStyle = INK; c.textAlign = 'center';
+  lines.forEach((l, i) => c.fillText(l, bx + w / 2, by + 20 + i * 18, w - 12));
+}
 function paulSideName(M, S) { // two of the same? Say which player
   const same = M.sides[0].who === M.sides[1].who;
   return M.two && same ? `${paulWho(S.who)} P${S.pl + 1}` : paulWho(S.who);
@@ -9079,7 +9106,7 @@ function paulMenuAnim(t) {
 // The host's device runs the game. The friend's device (the guest) sends its buttons to the host and draws
 // what the host sends back, about 20 times a second. The devices find each other with a 4-letter code
 // through PeerJS's free matchmaking service, then talk directly over WebRTC.
-const NET_BUILD = 'e4071ffbdf9b'; // the build puts a fingerprint of the game here: both devices must run the same version
+const NET_BUILD = '214e6fddc299'; // the build puts a fingerprint of the game here: both devices must run the same version
 const NET_PREFIX = 'naseer-crew-v1-';
 const NET_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'; // no vowels, so a code can't spell a word
 const NET_LIB = ['https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js', 'https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js'];
